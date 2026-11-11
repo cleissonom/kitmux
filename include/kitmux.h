@@ -8,7 +8,7 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-#define KM_VERSION "0.3.1"
+#define KM_VERSION "0.4.0"
 #define KM_MAX_FILE (8u * 1024u * 1024u)
 #define KM_AGENT_COUNT 3
 
@@ -48,6 +48,10 @@ int km_resource_toggle(Km *km, const char *kind, int argc, char **argv);
 int km_remove_resource(Km *km, const char *kind, const char *id);
 int km_dispatch(Km *km, int argc, char **argv);
 int km_group_command(Km *km, int argc, char **argv);
+int km_scoped_group_command(Km *km, const char *kind, int argc, char **argv);
+json_object *km_group_get(Km *km, const char *kind, const char *id);
+bool km_groups_need_migration(Km *km);
+int km_groups_migrate(Km *km, int argc, char **argv);
 int km_mcp_command(Km *km, int argc, char **argv);
 int km_mcp_native_save(Km *km, int argc, char **argv, bool editing);
 int km_skill_command(Km *km, int argc, char **argv);
@@ -63,14 +67,14 @@ void km_help(FILE *out);
  * Main holds the catalog lock and loads it for mutations; bridge/TUI manage
  * their own command lifetimes. Successful mutations call km_save exactly once.
  * Resources are maps in catalog.mcps / catalog.skills / catalog.subagents;
- * groups are catalog.groups. A nonempty subagent map upgrades catalog version to 2.
+ * groups are catalog.groups. Scoped groups use catalog version 3 and kind:ID keys.
  * Resource: enabled bool (default true), agents map with on/off/inherit values.
  * MCP: transport stdio/http, command array, url, cwd, env object, mode direct/managed.
  * variants[agent] is a full execution (transport/command-or-url/env?/cwd?) without
  * optional-field inheritance. Shared explicit edits update every mapped variant.
  * Skill: path (complete immutable package), source, revision, subdir, hash.
  * Subagent: description/instructions, portable bool, native client snapshots.
- * Group: enabled bool, agents string array, members mcp:id / skill:id / subagent:id.
+ * Group: kind/name strings, enabled bool, agents array, same-kind typed members.
  * km_write_file is atomic and refuses final symlinks. Errors return -1 and set error.
  */
 #endif

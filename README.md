@@ -5,22 +5,21 @@ A C terminal manager for MCP servers, Agent Skills, and custom subagents across
 clients receive them, and manage availability from an interactive terminal or
 ordinary commands.
 
-**v0.3.1 · C17 · [MIT](LICENSE)**
+**v0.4.0 · C17 · [MIT](LICENSE)**
 
 - Manage MCP servers, complete skill packages, and custom subagent definitions.
-- Share resources through groups, with explicit controls for each coding client.
+- Organize each resource view into groups, with explicit controls for each coding client.
 - Import existing setup, preview native changes, detect conflicts, and restore.
 - Use a keyboard interface with selectors, colors, filtering, and multiple selection.
 
 [Contributing](CONTRIBUTING.md) · [Security reporting](SECURITY.md) ·
 [Architecture](docs/IMPLEMENTATION.md) · [Third-party notices](THIRD_PARTY.md)
 
-Version 0.3 adds custom subagent creation, import, editing, duplication, groups,
-and per-client availability. Native variants retain each client's model, tools,
-permissions, and other settings. The local MCP bridge and skill package controls
-remain available with the compatibility limits below.
-Version 0.3.1 adds native MCP source files, skill source rebinding, and explicit
-refresh of externally edited imports for configuration-as-code integrations.
+Version 0.4 puts collapsible groups inside MCPs, Skills, and Subagents. A resource
+can belong to several groups while remaining one installed definition. Groups
+are scoped to their resource type, so editing a Skills group cannot change MCPs.
+Native variants retain each client's model, tools, permissions, and other
+settings. See [v0.4 notes](docs/V0.4.md) for migration and compatibility.
 
 ## Build and run
 
@@ -61,9 +60,18 @@ use `kitmux` assume it is installed on PATH; otherwise use `./build/kitmux`.
 Run `./build/kitmux --help` for commands. Without a TTY, the application prints
 help instead of waiting for input. `NO_COLOR=1` or `--no-color` disables colors.
 Reload clients after upgrading so new processes use the installed version.
-V0.2 catalogs load automatically. Subagent data upgrades the catalog and ownership
-journal to version 2; older Kitmux executables reject those files. Keep the newer
-executable for restore and recovery.
+Older catalogs can be inspected before migration. Preview and apply the group
+upgrade before editing groups:
+
+```sh
+kitmux group migrate --preview
+kitmux group migrate --apply
+```
+
+Migration splits mixed groups by resource type, preserves their availability,
+and backs up the original catalog before writing schema version 3. Empty legacy
+groups become MCP groups, as listed in the preview. Keep v0.4 for subsequent
+recovery; older executables cannot read schema version 3.
 
 ## First use
 
@@ -103,10 +111,10 @@ requires changing that specific native override before retrying sync.
 Create a group and assign it to any subset of the clients:
 
 ```sh
-./build/kitmux group add communication
-./build/kitmux group include communication mcp:teams mcp:slack
-./build/kitmux group assign communication --agents codex,claude,opencode
-./build/kitmux group enable communication
+./build/kitmux mcp group add communication
+./build/kitmux mcp group include communication teams slack
+./build/kitmux mcp group assign communication --agents codex,claude,opencode
+./build/kitmux mcp group enable communication
 ```
 
 The example assumes those server IDs exist. Imported resources preserve their
@@ -175,14 +183,17 @@ alongside effective availability; it omits MCP options and credentials.
 
 | Key | Action |
 |---|---|
-| `1`–`6`, Tab | Groups, MCPs, Skills, Subagents, Clients, Status |
+| `1`–`5`, Tab | MCPs, Skills, Subagents, Clients, Status |
 | Arrows, `j`/`k` | Move selection |
-| Enter | Show details |
+| Enter | Expand/collapse a group; show resource details |
+| Left/Right | Collapse/expand a group |
+| `v` | Show details for the selected group or resource |
 | Space | Select multiple rows |
 | `/`, Esc | Filter; clear filter or cancel |
 | `n`, `x`, `d` | Add, edit, remove |
+| `g` | Create a group inside the current resource tab |
 | `p` on Subagents | Duplicate a definition with a new ID |
-| `e`, `a`, `m` | Toggle, assign agents, select group members |
+| `e`, `a`, `m` | Toggle, assign clients, edit group memberships |
 | `r` | Reconnect selected MCP |
 | `s`, `i` | Preview/apply native sync or import |
 | `u`, `b` | Preview/apply skill update or roll back |
@@ -191,13 +202,18 @@ alongside effective availability; it omits MCP options and credentials.
 
 The interface needs at least 74 columns and 20 rows. It handles terminal resize,
 normal exit, and interruption without leaving echo disabled.
+Groups show their matching resources as indented rows; uncategorized resources
+appear under Ungrouped. Search finds resources even inside collapsed groups.
+An item appearing in several groups is one resource: edits apply everywhere,
+and bulk actions process it once. Removing a group preserves its resources.
+Groups can show mixed effective client availability when member overrides differ.
 Local MCP forms offer direct/managed mode selection. Reconnect asks which client
 to target and shows its result. Status is a captured snapshot; press `f` to query
 again.
 
 ## Custom subagents
 
-Press `4` for Subagents, select a profile, and press `a` to choose its clients.
+Press `3` for Subagents, select a profile, and press `a` to choose its clients.
 Space toggles a checkbox; Enter saves. `e` controls global availability. Subagents
 use the same group union, explicit per-client off, and global off rules as skills
 and MCPs. Assignments control future native discovery, not running tasks.
@@ -216,9 +232,9 @@ Create a portable profile from a plain Markdown instructions file:
 ```sh
 kitmux subagent add code-reviewer --from ./review-instructions.md \
   --description "Review code changes for correctness and regressions"
-kitmux group add engineering
-kitmux group include engineering subagent:code-reviewer
-kitmux group assign engineering --agents codex,claude,opencode
+kitmux subagent group add engineering
+kitmux subagent group include engineering code-reviewer
+kitmux subagent group assign engineering --agents codex,claude,opencode
 kitmux sync --preview
 kitmux sync --apply
 ```
@@ -265,7 +281,7 @@ definition does not terminate a running subagent or erase its context.
 ```sh
 ./build/kitmux mcp disable teams --agent claude
 ./build/kitmux mcp inherit teams --agent claude
-./build/kitmux group disable communication
+./build/kitmux mcp group disable communication
 ./build/kitmux status --json
 ```
 
@@ -354,7 +370,8 @@ actionable error if the platform socket-path limit is exceeded.
 ```sh
 ./build/kitmux skill add /absolute/path/to/meeting-notes
 ./build/kitmux skill add owner/repository --path skills/meeting-notes --ref COMMIT
-./build/kitmux group include communication skill:meeting-notes
+./build/kitmux skill group add communication
+./build/kitmux skill group include communication meeting-notes
 ./build/kitmux skill update meeting-notes --preview
 ./build/kitmux skill update meeting-notes --apply --ref NEW_COMMIT
 ./build/kitmux skill rollback meeting-notes

@@ -96,15 +96,15 @@ class ImportRefreshTests(unittest.TestCase):
     def test_refresh_keeps_subagent_inheritance_when_only_prompt_changes(self):
         path = self.write(".claude/agents/reviewer.md", "---\nname: reviewer\ndescription: Review\n---\nOriginal prompt.\n")
         self.cli("subagent", "import", "--from", "claude", "--apply")
-        self.cli("group", "add", "engineering")
-        self.cli("group", "include", "engineering", "subagent:reviewer")
-        self.cli("group", "assign", "engineering", "--agents", "claude")
+        self.cli("subagent", "group", "add", "engineering")
+        self.cli("subagent", "group", "include", "engineering", "subagent:reviewer")
+        self.cli("subagent", "group", "assign", "engineering", "--agents", "claude")
         self.cli("subagent", "inherit", "reviewer", "--agent", "claude")
         path.write_text(path.read_text().replace("Original prompt.", "Owner edited prompt."))
         self.cli("subagent", "import", "--refresh", "--from", "claude", "--apply")
         resource = json.loads(self.catalog.read_text())["subagents"]["reviewer"]
         self.assertEqual(resource["agents"]["claude"], "inherit")
-        self.cli("group", "disable", "engineering")
+        self.cli("subagent", "group", "disable", "engineering")
         self.assertFalse(path.exists())
 
     def test_refresh_is_rejected_for_sync_restore_and_doctor(self):

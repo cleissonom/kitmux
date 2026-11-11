@@ -16,7 +16,7 @@ $(BUILD)/%.o: src/%.c include/kitmux.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 -include $(OBJECTS:.o=.d)
-$(BUILD)/test_runtime_stop: tests/fixtures/runtime_stop.c $(filter-out $(addprefix $(BUILD)/,main.o tui.o tui_actions.o tui_forms.o),$(OBJECTS))
+$(BUILD)/test_runtime_stop: tests/fixtures/runtime_stop.c $(filter-out $(BUILD)/main.o $(BUILD)/tui.o $(BUILD)/tui_%.o,$(OBJECTS))
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
 test: all $(BUILD)/test_runtime_stop
 	KITMUX_BINARY=$(CURDIR)/$(BUILD)/kitmux python3 -m unittest discover -s tests -p 'test_*.py' -v

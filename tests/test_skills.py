@@ -91,12 +91,12 @@ class SkillTests(unittest.TestCase):
 
     def test_remove_keeps_source_and_cleans_group_membership(self):
         self.cli("skill", "add", self.source)
-        self.cli("group", "add", "communication")
-        self.cli("group", "include", "communication", "skill:meeting-notes")
+        self.cli("skill", "group", "add", "communication")
+        self.cli("skill", "group", "include", "communication", "skill:meeting-notes")
         self.cli("skill", "remove", "meeting-notes")
         self.assertTrue((self.source / "SKILL.md").exists())
         self.assertEqual(self.catalog()["skills"], {})
-        self.assertEqual(self.catalog()["groups"]["communication"]["members"], [])
+        self.assertEqual(self.catalog()["groups"]["skill:communication"]["members"], [])
 
     def test_git_install_pins_commit_and_ignores_untracked_files(self):
         subprocess.run(["git", "init", "-q", str(self.source)], check=True)

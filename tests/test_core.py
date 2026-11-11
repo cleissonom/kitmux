@@ -28,26 +28,26 @@ class CatalogTests(unittest.TestCase):
 
     def resource(self):
         self.run_cli("mcp", "add", "teams", "--command", "/usr/bin/true")
-        self.run_cli("group", "add", "communication")
-        self.run_cli("group", "include", "communication", "mcp:teams")
+        self.run_cli("mcp", "group", "add", "communication")
+        self.run_cli("mcp", "group", "include", "communication", "mcp:teams")
 
     def test_all_eight_agent_assignments(self):
         self.resource()
         agents = ["codex", "claude", "opencode"]
         for mask in range(8):
             selected = [a for bit, a in enumerate(agents) if mask & (1 << bit)]
-            self.run_cli("group", "assign", "communication", "--agents", ",".join(selected))
+            self.run_cli("mcp", "group", "assign", "communication", "--agents", ",".join(selected))
             row = self.status()["mcps"]["teams"]["agents"]
             for a in agents:
                 self.assertEqual(row[a]["enabled"], a in selected, (mask, a))
 
     def test_union_and_explicit_off(self):
         self.resource()
-        self.run_cli("group", "assign", "communication", "--agents", "codex,claude")
-        self.run_cli("group", "add", "engineering")
-        self.run_cli("group", "include", "engineering", "mcp:teams")
-        self.run_cli("group", "assign", "engineering", "--agents", "codex")
-        self.run_cli("group", "disable", "communication")
+        self.run_cli("mcp", "group", "assign", "communication", "--agents", "codex,claude")
+        self.run_cli("mcp", "group", "add", "engineering")
+        self.run_cli("mcp", "group", "include", "engineering", "mcp:teams")
+        self.run_cli("mcp", "group", "assign", "engineering", "--agents", "codex")
+        self.run_cli("mcp", "group", "disable", "communication")
         row = self.status()["mcps"]["teams"]["agents"]
         self.assertTrue(row["codex"]["enabled"])
         self.assertFalse(row["claude"]["enabled"])
@@ -66,9 +66,9 @@ class CatalogTests(unittest.TestCase):
         self.resource()
         path = self.home / ".config/kitmux/catalog.json"
         before = path.read_bytes()
-        self.run_cli("group", "include", "communication", "mcp:missing", ok=False)
-        self.run_cli("group", "assign", "communication", "--agents", "unknown", ok=False)
-        self.run_cli("group", "add", "../escape", ok=False)
+        self.run_cli("mcp", "group", "include", "communication", "mcp:missing", ok=False)
+        self.run_cli("mcp", "group", "assign", "communication", "--agents", "unknown", ok=False)
+        self.run_cli("mcp", "group", "add", "../escape", ok=False)
         self.assertEqual(path.read_bytes(), before)
 
     def test_remove_cleans_membership(self):
@@ -76,13 +76,13 @@ class CatalogTests(unittest.TestCase):
         self.run_cli("mcp", "remove", "teams")
         state = self.status()
         self.assertNotIn("teams", state["mcps"])
-        self.assertEqual(state["groups"]["communication"]["members"], [])
+        self.assertEqual(state["groups"]["mcp:communication"]["members"], [])
 
     def test_corrupt_catalog_is_not_overwritten(self):
         self.resource()
         path = self.home / ".config/kitmux/catalog.json"
         path.write_text('{"version":1,"groups":')
-        self.run_cli("group", "add", "other", ok=False)
+        self.run_cli("mcp", "group", "add", "other", ok=False)
         self.assertEqual(path.read_text(), '{"version":1,"groups":')
 
     def test_non_tty_does_not_wait_for_input(self):
@@ -104,7 +104,7 @@ class CatalogTests(unittest.TestCase):
             data["mcps"]["teams"][key] = value
             path.write_text(json.dumps(data))
             self.run_cli("status", "--json", ok=False)
-        original["groups"]["communication"]["members"] = ["mcp:teams\x1b[2J"]
+        original["groups"]["mcp:communication"]["members"] = ["mcp:teams\x1b[2J"]
         path.write_text(json.dumps(original))
         self.run_cli("status", ok=False)
 
@@ -122,11 +122,11 @@ class CatalogTests(unittest.TestCase):
         path.unlink()
         path.symlink_to(external)
         before = external.read_bytes()
-        self.run_cli("group", "add", "new", ok=False)
+        self.run_cli("mcp", "group", "add", "new", ok=False)
         self.assertEqual(external.read_bytes(), before)
 
     def test_unknown_list_option_is_rejected(self):
-        self.run_cli("group", "list", "--surprise", ok=False)
+        self.run_cli("mcp", "group", "list", "--surprise", ok=False)
 
     def test_imported_endpoint_edit_cannot_carry_credentials(self):
         self.run_cli("mcp", "add", "remote", "--url", "https://original.test/mcp")
@@ -148,7 +148,7 @@ class CatalogTests(unittest.TestCase):
         data["mcps"]["teams"]["native"] = {"codex": {"metadata": [0] * 600000}}
         path.write_text(json.dumps(data, separators=(",", ":")))
         before = path.read_bytes()
-        self.run_cli("group", "add", "extra", ok=False)
+        self.run_cli("mcp", "group", "add", "extra", ok=False)
         self.assertEqual(path.read_bytes(), before)
         self.run_cli("status", "--json")
 

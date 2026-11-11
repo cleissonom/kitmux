@@ -99,7 +99,7 @@ class SubagentFormatTests(unittest.TestCase):
         self.assertIn("effect: deny", path.read_text())
 
     def test_invalid_utf8_source_cannot_poison_the_catalog(self):
-        self.cli("group", "add", "existing")
+        self.cli("subagent", "group", "add", "existing")
         catalog = self.home / ".config/kitmux/catalog.json"
         before = catalog.read_bytes()
         cases = [("common", b"Review.\xff"),

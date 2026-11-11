@@ -32,9 +32,9 @@ class AdapterTests(unittest.TestCase):
 
     def registered(self, agents="codex,claude,opencode"):
         self.cli("mcp", "add", "example", "--command", "/usr/bin/true")
-        self.cli("group", "add", "work")
-        self.cli("group", "include", "work", "mcp:example")
-        self.cli("group", "assign", "work", "--agents", agents)
+        self.cli("mcp", "group", "add", "work")
+        self.cli("mcp", "group", "include", "work", "mcp:example")
+        self.cli("mcp", "group", "assign", "work", "--agents", agents)
 
     def test_preview_does_not_write_native_configs(self):
         self.registered()
@@ -111,7 +111,7 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
 
     def test_skill_only_for_claude_is_denied_in_opencode(self):
-        self.cli("group", "add", "skills")
+        self.cli("mcp", "group", "add", "skills")
         package = self.home / "package"
         package.mkdir()
         (package / "SKILL.md").write_text("---\nname: review\ndescription: Review code\n---\nReview.")
@@ -174,7 +174,7 @@ class AdapterTests(unittest.TestCase):
         self.write(".config/opencode/opencode.json", json.dumps({"permissions":[
             {"action":"skill", "resource":"review", "effect":"deny"},
             {"action":"skill", "resource":"*", "effect":"allow"}]}))
-        self.cli("group", "add", "seed")
+        self.cli("mcp", "group", "add", "seed")
         path = self.home / ".config/kitmux/catalog.json"
         catalog = json.loads(path.read_text())
         catalog["skills"]["review"] = {"name":"review", "path":str(self.home / "unused"), "enabled":True, "agents":{}}
@@ -215,7 +215,7 @@ class AdapterTests(unittest.TestCase):
     def test_open_code_agent_skill_override_conflict_is_explicit(self):
         self.write(".config/opencode/opencode.json", json.dumps({"agents":{"build":{"permissions":[
             {"action":"skill", "resource":"*", "effect":"allow"}]}}}))
-        self.cli("group", "add", "seed")
+        self.cli("mcp", "group", "add", "seed")
         path = self.home / ".config/kitmux/catalog.json"
         catalog = json.loads(path.read_text())
         catalog["skills"]["review"] = {"name":"review", "path":str(self.home / "unused"), "enabled":True, "agents":{}}
@@ -224,7 +224,7 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("permission", result.stderr.lower())
 
     def test_skill_remove_and_restore_only_detach_owned_links(self):
-        self.cli("group", "add", "seed")
+        self.cli("mcp", "group", "add", "seed")
         package = self.home / "package"
         package.mkdir()
         (package / "SKILL.md").write_text("---\nname: review\ndescription: Review code\n---\nReview.")
@@ -251,7 +251,7 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("example", json.loads(path.read_text())["mcpServers"])
 
     def test_all_eight_skill_assignments_have_independent_projections(self):
-        self.cli("group", "add", "seed")
+        self.cli("mcp", "group", "add", "seed")
         package = self.home / "package"
         package.mkdir()
         (package / "SKILL.md").write_text("---\nname: review\ndescription: Review code\n---\nReview.")

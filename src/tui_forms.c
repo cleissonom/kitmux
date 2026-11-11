@@ -23,17 +23,20 @@ int ui_tokens(char *text, char **argv, int capacity) {
     return count;
 }
 
-static void group_form(KmUi *ui, bool editing) {
+void ui_add_group(KmUi *ui, bool editing) {
+    if (ui->tab >= UI_CLIENTS || (editing && !ui_group_selected(ui))) return;
     char id[65] = "";
     if (editing && !ui_current(ui)) return;
     char *old = editing ? strdup(ui_current(ui)) : NULL;
     if (editing && !old) return;
     if (editing) snprintf(id, sizeof(id), "%s", old);
     if (ui_input(ui, editing ? "Rename group" : "Add group", "Group name", id, sizeof(id)) && *id) {
-        char *args[] = {"group", editing ? "rename" : "add", editing ? old : id, id};
-        ui_command(ui, editing ? 4 : 3, args);
+        char *args[] = {(char *)ui_kind(ui), "group", editing ? "rename" : "add", editing ? old : id, id};
+        if (!ui_command(ui, editing ? 5 : 4, args)) {
+            snprintf(ui->focus, sizeof(ui->focus), "%s", id); ui->focus_group = true;
+        }
     }
-    free(old);
+    free(old); ui_rebuild(ui);
 }
 
 static bool command_defaults(json_object *item, char *command, size_t size, char *arguments, size_t capacity) {
@@ -114,7 +117,7 @@ static void subagent_form(KmUi *ui, bool editing) {
 }
 
 void ui_duplicate(KmUi *ui) {
-    if (ui->tab != UI_SUBAGENTS || !ui_current(ui)) return;
+    if (ui->tab != UI_SUBAGENTS || !ui_resource_selected(ui)) return;
     char *id = strdup(ui_current(ui)); char name[65] = "";
     if (!id) return;
     if (ui_input(ui, "Duplicate subagent", "New subagent name", name, sizeof(name)) && *name) {
@@ -125,74 +128,28 @@ void ui_duplicate(KmUi *ui) {
 }
 
 void ui_add(KmUi *ui, bool editing) {
-    if (ui->tab == 0) group_form(ui, editing);
-    else if (ui->tab == 1) mcp_form(ui, editing);
-    else if (ui->tab == 2 && !editing) skill_form(ui);
+    if (ui->tab >= UI_CLIENTS || (editing && !ui_resource_selected(ui))) return;
+    const KmUiRow *selected = ui_current_row(ui);
+    char *group = selected && selected->group ? strdup(selected->group) : NULL;
+    json_object *before = json_object_get(km_resources(ui->km, ui_kind(ui)));
+    if (ui->tab == UI_MCPS) mcp_form(ui, editing);
+    else if (ui->tab == UI_SKILLS && !editing) skill_form(ui);
     else if (ui->tab == UI_SUBAGENTS) subagent_form(ui, editing);
-    else ui_notice(ui, "Select Groups, MCPs, Skills, or Subagents to add an item.");
+    else ui_notice(ui, "Select MCPs, Skills, or Subagents to add an item.");
+    json_object_object_foreach(km_resources(ui->km, ui_kind(ui)), id, item) {
+        (void)item;
+        if (km_get(before, id)) continue;
+        snprintf(ui->focus, sizeof(ui->focus), "%s", id);
+        if (group) {
+            char *args[] = {(char *)ui_kind(ui), "group", "include", group, ui->focus};
+            ui_command(ui, 5, args);
+            char key[80]; snprintf(key, sizeof(key), "%s:%s", ui_kind(ui), group);
+            json_object_object_del(ui->collapsed, key);
+        }
+        break;
+    }
+    json_object_put(before); free(group);
     ui_rebuild(ui);
-}
-
-static bool member_exists(json_object *members, const char *id) {
-    for (size_t i = 0; members && i < json_object_array_length(members); i++)
-        if (!strcmp(json_object_get_string(json_object_array_get_idx(members, i)), id)) return true;
-    return false;
-}
-
-static int collect_members(KmUi *ui, char **names, bool *choices, json_object *members) {
-    int count = 0;
-    const char *kinds[] = {"mcp", "skill", "subagent"};
-    for (size_t type = 0; type < sizeof(kinds) / sizeof(*kinds); type++) {
-        const char *kind = kinds[type];
-        json_object_object_foreach(km_resources(ui->km, kind), id, item) {
-            (void)item; size_t length = strlen(kind) + strlen(id) + 2;
-            names[count] = malloc(length);
-            if (!names[count]) return -1;
-            snprintf(names[count], length, "%s:%s", kind, id);
-            choices[count] = member_exists(members, names[count]); count++;
-        }
-    }
-    return count;
-}
-
-static bool member_selector(KmUi *ui, char **names, bool *choices, int count) {
-    int row = 0, top = 0;
-    while (!km_ui_interrupted) {
-        if (!ui_modal_ready()) return false;
-        erase(); attron(A_BOLD); mvaddstr(2, 3, "Group membership"); attroff(A_BOLD);
-        mvaddstr(4, 3, "Space toggles membership. Enter saves. Esc cancels.");
-        int visible = LINES - 9;
-        if (visible < 1) visible = 1;
-        if (row < top) top = row;
-        if (row >= top + visible) top = row - visible + 1;
-        for (int i = top; i < count && i < top + visible; i++) mvprintw(6 + i - top, 3, "%c [%c] %.100s", row == i ? '>' : ' ', choices[i] ? 'x' : ' ', names[i]);
-        if (!count) mvaddstr(6, 3, "Add an MCP, skill, or subagent first.");
-        refresh(); int key = getch();
-        if (key == 27) return false;
-        if (key == '\n' || key == KEY_ENTER) return true;
-        if (key == ' ' && count) choices[row] = !choices[row];
-        if ((key == 'j' || key == KEY_DOWN) && row + 1 < count) row++;
-        if ((key == 'k' || key == KEY_UP) && row) row--;
-    }
-    (void)ui; return false;
-}
-
-void ui_members(KmUi *ui) {
-    if (ui->tab != 0 || !ui_current(ui)) { ui_notice(ui, "Select a group to change its members."); return; }
-    char *group = strdup(ui_current(ui));
-    size_t capacity = (size_t)json_object_object_length(km_resources(ui->km, "mcp")) + (size_t)json_object_object_length(km_resources(ui->km, "skill")) + (size_t)json_object_object_length(km_resources(ui->km, "subagent")) + 1;
-    char **names = calloc(capacity, sizeof(*names)); bool *choices = calloc(capacity, sizeof(*choices));
-    if (!group || !names || !choices) { free(group); free(names); free(choices); ui_notice(ui, "Cannot allocate membership selector."); return; }
-    int count = collect_members(ui, names, choices, km_get(ui_item(ui, group), "members"));
-    if (count >= 0 && member_selector(ui, names, choices, count)) {
-        for (int i = 0; i < count; i++) {
-            bool before = member_exists(km_get(ui_item(ui, group), "members"), names[i]);
-            if (before == choices[i]) continue;
-            char *args[] = {"group", choices[i] ? "include" : "exclude", group, names[i]};
-            if (ui_command(ui, 4, args)) break;
-        }
-    }
-    for (size_t i = 0; i < capacity; i++) free(names[i]); free(names); free(choices); free(group); ui_rebuild(ui);
 }
 
 void ui_sync(KmUi *ui, bool importing) {
@@ -208,7 +165,7 @@ void ui_sync(KmUi *ui, bool importing) {
 }
 
 void ui_reconnect(KmUi *ui) {
-    if (ui->tab != 1 || !ui_current(ui)) { ui_notice(ui, "Select an MCP to reconnect."); return; }
+    if (ui->tab != UI_MCPS || !ui_resource_selected(ui)) { ui_notice(ui, "Select an MCP to reconnect."); return; }
     int agent = ui_choice("Reconnect agent", km_agents, KM_AGENT_COUNT, 0);
     if (agent < 0) return;
     char *id = strdup(ui_current(ui));

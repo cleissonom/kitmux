@@ -17,7 +17,7 @@ and use `./build/kitmux` there, or its absolute executable path. Installed help 
 the command contract. Use `kitmux --home DIR ...` only for an explicitly selected
 alternate home or an isolated test.
 
-Start with `kitmux status --json` and the relevant `group list`, `mcp show ID`, or
+Start with `kitmux status --json` and the relevant `mcp group list`, `mcp show ID`, or
 `skill list`. In CLI flags, `--agent` means a **client**: `codex`, `claude`, or
 `opencode`.
 
@@ -57,13 +57,18 @@ then `sync --apply`. Do not force ownership by editing its private journal.
 
 ## Groups and availability
 
-Groups can mix MCPs, skills, and subagents. Use existing IDs from the catalog:
+Groups belong to MCPs, Skills, or Subagents and appear inside that resource's
+tab. The same name can exist independently in each type. Resources can belong
+to multiple groups without duplicating their installed definitions. Use existing
+IDs from the catalog:
 
 ```sh
-kitmux group add communication
-kitmux group include communication mcp:teams skill:meeting-notes
-kitmux group assign communication --agents codex,claude,opencode
-kitmux group enable communication
+kitmux mcp group add communication
+kitmux mcp group include communication teams
+kitmux mcp group assign communication --agents codex,claude,opencode
+kitmux mcp group enable communication
+kitmux skill group add communication
+kitmux skill group include communication meeting-notes
 kitmux mcp inherit teams --agent codex
 kitmux skill disable meeting-notes --agent opencode
 ```
@@ -78,9 +83,17 @@ kitmux skill disable meeting-notes --agent opencode
 - An unassigned resource is unavailable. Group assignment replaces the group's
   client list; `--agents ''` assigns none.
 
-Use `group exclude GROUP mcp:ID|skill:ID`, `group disable GROUP`, or resource
-`remove ID` for the requested scope. A group change does not imply deletion of
-its packages or native credentials.
+Use `mcp|skill|subagent group exclude GROUP ID`, the matching `group disable
+GROUP`, or resource `remove ID` for the requested scope. Deleting a group
+preserves its resources, packages, and native credentials; their effective
+availability can change when the group's assignment is removed.
+
+For v0.3 catalogs, run `kitmux group migrate --preview`, then `--apply` within
+the user's authorized upgrade. Migration splits mixed groups by type, preserves
+availability, and saves a private backup before writing catalog schema 3. Empty
+legacy groups become MCP groups, as the preview shows. Never rewrite catalog
+or ownership-journal data manually. Old global group mutation commands now
+require a resource type; update automation to the typed commands above.
 
 ## MCP definitions and runtime
 
@@ -159,7 +172,8 @@ skills, and profiles. Import previews preserve native files and omit their bodie
 kitmux subagent import --from codex,claude,opencode --preview
 kitmux subagent import --from codex,claude,opencode --apply
 kitmux subagent add code-reviewer --from ./review.md --description "Review code changes"
-kitmux group include engineering subagent:code-reviewer
+kitmux subagent group add engineering
+kitmux subagent group include engineering code-reviewer
 kitmux subagent enable code-reviewer --agent codex
 kitmux subagent disable code-reviewer --agent claude
 kitmux subagent edit code-reviewer --from ./review-updated.md
@@ -181,8 +195,11 @@ native options. Inspect `subagent list`, `subagent show ID`, and `status --json`
 for compatibility and dependency information. Missing catalog dependencies can
 still be supplied natively; do not silently enable or install them.
 
-The Subagents tab is `4`: `a` assigns clients, Space toggles a checkbox, Enter
-saves, and `e` controls global availability. Changes affect user-level discovery
+The Subagents tab is `3`; MCPs and Skills are `1` and `2`. There is no Groups
+tab. Enter expands/collapses group headers or shows resource details; `g` creates
+a group, `m` edits memberships, and `v` shows group or resource details.
+`a` assigns clients, Space toggles a checkbox,
+Enter saves, and `e` controls availability. Changes affect user-level discovery
 after native refresh. Project/plugin definitions may override them, and running
 subagents retain their context. Kitmux does not execute, stop, or reconnect custom
 subagents. `restore` recovers owned native definitions and releases management.

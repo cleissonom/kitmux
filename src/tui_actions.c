@@ -151,15 +151,24 @@ void ui_view(KmUi *ui, const char *title) { (void)output_view(ui, title, false);
 
 static void toggle_items(KmUi *ui, bool removing) {
     if (ui->tab >= UI_CLIENTS || !ui_current(ui)) return;
-    if (removing && !ui_confirm(ui, "Remove the selected catalog items? Sources are preserved.")) return;
     bool marked = json_object_object_length(ui->marks) > 0;
+    const char *confirmation = !marked && ui_group_selected(ui) ?
+        "Remove this group? Members remain installed." : "Remove selected groups/items? Group members remain installed.";
+    if (removing && !ui_confirm(ui, confirmation)) return;
+    json_object *seen = json_object_new_object();
     for (int i = 0; i < ui->count; i++) {
-        if ((marked && !km_get(ui->marks, ui->ids[i])) || (!marked && i != ui->row)) continue;
-        json_object *flag = km_get(ui_item(ui, ui->ids[i]), "enabled");
+        const KmUiRow *row = &ui->rows[i]; char key[80]; ui_mark_key(row, key, sizeof(key));
+        if (row->type == UI_UNGROUPED || km_get(seen, key) ||
+            (marked ? !km_get(ui->marks, key) : i != ui->row)) continue;
+        json_object_object_add(seen, key, json_object_new_boolean(true));
+        json_object *item = row->type == UI_GROUP ? ui_group_item(ui, row->id) : ui_item(ui, row->id);
+        json_object *flag = km_get(item, "enabled");
         char *verb = removing ? "remove" : (!flag || json_object_get_boolean(flag) ? "disable" : "enable");
-        char *args[] = {(char *)ui_kind(ui), verb, ui->ids[i]};
-        if (ui_command(ui, 3, args)) break;
+        char *args[] = {(char *)ui_kind(ui), "group", verb, row->id};
+        if (row->type == UI_RESOURCE) { args[1] = verb; args[2] = row->id; }
+        if (ui_command(ui, row->type == UI_GROUP ? 4 : 3, args)) break;
     }
+    json_object_put(seen);
     json_object_put(ui->marks); ui->marks = json_object_new_object(); ui_rebuild(ui);
 }
 
@@ -175,14 +184,16 @@ void ui_assign(KmUi *ui) {
     char *id = strdup(current);
     if (!id) return;
     bool choices[KM_AGENT_COUNT]; int row = 0;
-    for (int a = 0; a < KM_AGENT_COUNT; a++) choices[a] = ui->tab == 0 ? has_agent(km_get(ui_item(ui, id), "agents"), km_agents[a]) : km_effective(ui->km, ui_kind(ui), id, km_agents[a], NULL, 0);
+    bool group = ui_group_selected(ui);
+    for (int a = 0; a < KM_AGENT_COUNT; a++) choices[a] = group ? has_agent(km_get(ui_group_item(ui, id), "agents"), km_agents[a]) : km_effective(ui->km, ui_kind(ui), id, km_agents[a], NULL, 0);
     int key = 0;
     while (!km_ui_interrupted) {
         if (!ui_modal_ready()) { free(id); return; }
         dialog_title("Assign agents"); mvprintw(5, 3, "%s", id);
-        if (ui->tab) mvaddstr(6, 3, "Explicit overrides; use CLI inherit to follow groups again.");
+        if (!group) mvaddstr(6, 3, "Explicit overrides; use CLI inherit to follow groups again.");
+        else mvaddstr(6, 3, "Only this resource type; individual OFF overrides still win.");
         for (int a = 0; a < KM_AGENT_COUNT; a++) {
-            bool compatible = ui->tab != UI_SUBAGENTS || km_subagent_compatible(ui_item(ui, id), km_agents[a], NULL, 0);
+            bool compatible = group || ui->tab != UI_SUBAGENTS || km_subagent_compatible(ui_item(ui, id), km_agents[a], NULL, 0);
             mvprintw(7 + a, 3, "%c [%c] %s%s", row == a ? '>' : ' ', choices[a] ? 'x' : ' ', km_agents[a], compatible ? "" : " (native variant required)");
         }
         mvprintw(12, 3, "j/k move   Space toggle   Enter save   Esc cancel"); refresh(); key = getch();
@@ -194,10 +205,10 @@ void ui_assign(KmUi *ui) {
     }
     if (km_ui_interrupted) { free(id); return; }
     int result = 0;
-    if (ui->tab == 0) {
+    if (group) {
         char csv[64] = "";
         for (int a = 0; a < KM_AGENT_COUNT; a++) if (choices[a]) { if (*csv) strcat(csv, ","); strcat(csv, km_agents[a]); }
-        char *args[] = {"group", "assign", id, "--agents", csv}; result = ui_command(ui, 5, args);
+        char *args[] = {(char *)ui_kind(ui), "group", "assign", id, "--agents", csv}; result = ui_command(ui, 6, args);
     } else for (int a = 0; a < KM_AGENT_COUNT && !result; a++) {
         char *args[] = {(char *)ui_kind(ui), choices[a] ? "enable" : "disable", id, "--agent", (char *)km_agents[a]};
         result = ui_command(ui, 5, args);
@@ -209,13 +220,13 @@ void ui_assign(KmUi *ui) {
 static void show_help(KmUi *ui) {
     if (!ui_modal_ready()) return;
     dialog_title("Kitmux keyboard shortcuts");
-    const char *lines[] = {"1-6 / Tab   Groups, MCPs, Skills, Subagents, Clients, Status", "j/k / arrows   Move selection or scroll Status", "Enter   Toggle details     Space   Select multiple rows", "e   Enable/disable selected     a   Assign agents", "n Add  x Edit MCP/subagent or rename group  d Remove", "m   Group membership     /   Filter     Esc   Clear filter", "r   Reconnect MCP     s   Preview/adopt native configuration", "i Import (current Subagents tab: profiles only)  p Duplicate subagent", "u   Preview/apply skill update     b   Roll back skill", "f   Capture new Status observation     c   Doctor     q   Quit", "", "Adopt clients with s. Later changes sync adopted clients.", "Your coding agent may still need a refresh or reload.", "Press any key to return."};
+    const char *lines[] = {"1-5 / Tab   MCPs, Skills, Subagents, Clients, Status", "j/k / arrows   Move selection or scroll Status", "Enter / Left / Right   Expand groups; Enter shows item details", "Space   Select rows; repeated items are selected once", "e Toggle availability   a Assign clients   v Toggle details", "g New group  n Add item  x Edit/rename  d Remove", "m Group members or item groups   / Search   Esc Clear/cancel", "r Reconnect MCP   s Preview/adopt native configuration", "i Import (Subagents: profiles only)  p Duplicate subagent", "u Preview/apply skill update   b Roll back skill", "f Capture Status observation   c Doctor   q Quit", "", "Group clients show effective availability; [-] means mixed.", "Another group can enable an item. Explicit/global OFF wins.", "Your coding agent may still need a refresh or reload.", "Press any key to return."};
     for (size_t i = 0; i < sizeof(lines) / sizeof(*lines) && (int)i + 5 < LINES - 1; i++) mvaddnstr(5 + (int)i, 3, lines[i], COLS - 6);
     refresh(); while (getch() == ERR && !km_ui_interrupted) {} (void)ui;
 }
 
 static void skill_action(KmUi *ui, bool rollback) {
-    if (ui->tab != 2 || !ui_current(ui)) return;
+    if (ui->tab != UI_SKILLS || !ui_resource_selected(ui)) return;
     char *id = strdup(ui_current(ui));
     if (!id) return;
     char *args[] = {"skill", rollback ? "rollback" : "update", id, "--preview"};
@@ -231,6 +242,8 @@ void ui_action(KmUi *ui, int key) {
     else if (key == 'd') toggle_items(ui, true);
     else if (key == 'a') ui_assign(ui);
     else if (key == 'm') ui_members(ui);
+    else if (key == 'g') ui_add_group(ui, false);
+    else if (key == 'x' && ui_group_selected(ui)) ui_add_group(ui, true);
     else if (key == 'n' || key == 'x') ui_add(ui, key == 'x');
     else if (key == 'p') ui_duplicate(ui);
     else if (key == 'r') ui_reconnect(ui);

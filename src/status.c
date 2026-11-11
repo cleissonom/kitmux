@@ -89,6 +89,8 @@ static json_object *group_status(Km *km) {
     json_object *result = json_object_new_object(), *groups = km_get(km->catalog, "groups");
     json_object_object_foreach(groups, id, group) {
         json_object *copy = json_object_new_object();
+        if (km_get(group, "kind")) json_object_object_add(copy, "kind", json_object_get(km_get(group, "kind")));
+        if (km_get(group, "name")) json_object_object_add(copy, "name", json_object_get(km_get(group, "name")));
         json_object_object_add(copy, "enabled", json_object_get(km_get(group, "enabled")));
         json_object_object_add(copy, "agents", json_object_get(km_get(group, "agents")));
         json_object_object_add(copy, "members", json_object_get(km_get(group, "members")));

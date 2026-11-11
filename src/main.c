@@ -11,10 +11,11 @@ void km_help(FILE *out) {
         "kitmux %s — MCPs, skills, and subagents, assigned to your clients\n\n"
         "Usage: kitmux [--home DIR] [--no-color] COMMAND\n"
         "Run without a command in a terminal for the interactive interface.\n\n"
-        "  group add|list|show|rename|remove ID\n"
-        "  group include|exclude GROUP mcp:ID|skill:ID|subagent:ID ...\n"
-        "  group assign GROUP --agents codex,claude,opencode\n"
-        "  group enable|disable GROUP\n"
+        "  mcp|skill|subagent group add|list|show|rename|remove ID\n"
+        "  mcp|skill|subagent group include|exclude GROUP RESOURCE_ID ...\n"
+        "  mcp|skill|subagent group assign GROUP --agents codex,claude,opencode\n"
+        "  mcp|skill|subagent group enable|disable GROUP\n"
+        "  group migrate --preview|--apply\n"
         "  mcp add|edit ID --command PROGRAM [--mode managed] -- ARGS...\n"
         "  mcp add|edit ID --url URL\n"
         "  mcp add|edit ID --from FILE --format codex|claude|opencode\n"
@@ -45,6 +46,9 @@ void km_help(FILE *out) {
 static bool unlocked_command(int argc, char **argv) {
     if (!argc || !strcmp(argv[0], "status") || !strcmp(argv[0], "doctor") ||
         !strcmp(argv[0], "help") || !strcmp(argv[0], "bridge")) return true;
+    if (argc > 1 && (!strcmp(argv[0], "mcp") || !strcmp(argv[0], "skill") || !strcmp(argv[0], "subagent")) && !strcmp(argv[1], "group"))
+        return argc == 2 || !strcmp(argv[2], "list") || !strcmp(argv[2], "show");
+    if (argc == 3 && !strcmp(argv[0], "group") && !strcmp(argv[1], "migrate")) return !strcmp(argv[2], "--preview");
     if (argc > 1 && !strcmp(argv[0], "skill") && !strcmp(argv[1], "update")) {
         for (int i = 2; i < argc; ++i) if (!strcmp(argv[i], "--apply")) return false;
         return true;
@@ -65,6 +69,8 @@ static bool unlocked_command(int argc, char **argv) {
 
 static int route(Km *km, int argc, char **argv) {
     if (!argc || !strcmp(argv[0], "help")) { km_help(stdout); return 0; }
+    if (argc > 1 && (!strcmp(argv[0], "mcp") || !strcmp(argv[0], "skill") || !strcmp(argv[0], "subagent")) && !strcmp(argv[1], "group"))
+        return km_scoped_group_command(km, argv[0], argc - 2, argv + 2);
     if (!strcmp(argv[0], "group")) return km_group_command(km, argc - 1, argv + 1);
     if (!strcmp(argv[0], "mcp")) return km_mcp_command(km, argc - 1, argv + 1);
     if (!strcmp(argv[0], "skill")) return km_skill_command(km, argc - 1, argv + 1);

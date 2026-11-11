@@ -154,6 +154,15 @@ static int validate_mcp(Km *km, const char *id, json_object *server) {
 
 static int validate_group(Km *km, json_object *catalog, const char *id, json_object *group) {
     json_object *agents = km_get(group, "agents"), *members = km_get(group, "members");
+    const char *scope = km_string(group, "kind"), *group_name = km_string(group, "name");
+    int version = json_object_get_int(km_get(catalog, "version"));
+    if (version == 3) {
+        char key[80];
+        if (!scope || !group_name || !plain_string(km_get(group, "kind")) || !plain_string(km_get(group, "name")) ||
+            (strcmp(scope, "mcp") && strcmp(scope, "skill") && strcmp(scope, "subagent")) || !km_valid_id(group_name) ||
+            km_path(km, key, sizeof(key), "%s:%s", scope, group_name) < 0 || strcmp(key, id))
+            return km_error(km, "Invalid scoped group");
+    } else if (!km_valid_id(id) || scope || km_get(group, "name")) return km_error(km, "Invalid legacy group");
     if (!string_array(agents) || !string_array(members) || !json_object_is_type(km_get(group, "enabled"), json_type_boolean))
         return km_error(km, "Invalid group %s", id);
     for (size_t i = 0; i < json_object_array_length(agents); ++i)
@@ -164,7 +173,9 @@ static int validate_group(Km *km, json_object *catalog, const char *id, json_obj
         if (!strncmp(s, "mcp:", 4)) { name = s + 4; map = "mcps"; }
         else if (!strncmp(s, "skill:", 6)) { name = s + 6; map = "skills"; }
         else if (!strncmp(s, "subagent:", 9)) { name = s + 9; map = "subagents"; }
-        if (!name || !km_valid_id(name) || !km_get(km_get(catalog, map), name)) return km_error(km, "Invalid member in group %s", id);
+        if (!name || !km_valid_id(name) || !km_get(km_get(catalog, map), name) ||
+            (scope && (strncmp(s, scope, strlen(scope)) || s[strlen(scope)] != ':')))
+            return km_error(km, "Invalid member in group %s", id);
     }
     return 0;
 }
@@ -187,7 +198,7 @@ static int validate_resource(Km *km, const char *id, json_object *value) {
 
 static int validate_catalog(Km *km, json_object *catalog) {
     json_object *version = km_get(catalog, "version"), *revision = km_get(catalog, "revision");
-    if (!json_object_is_type(version, json_type_int) || (json_object_get_int(version) != 1 && json_object_get_int(version) != 2) ||
+    if (!json_object_is_type(version, json_type_int) || (json_object_get_int(version) < 1 || json_object_get_int(version) > 3) ||
         !json_object_is_type(revision, json_type_int) || json_object_get_int64(revision) < 0)
         return km_error(km, "Unsupported or invalid catalog version/revision");
     const char *maps[] = {"mcps", "skills", "subagents", "groups"};
@@ -195,7 +206,7 @@ static int validate_catalog(Km *km, json_object *catalog) {
         json_object *map = km_get(catalog, maps[i]);
         if (!json_object_is_type(map, json_type_object)) return km_error(km, "Invalid catalog %s", maps[i]);
         json_object_object_foreach(map, id, value) {
-            if (!km_valid_id(id) || !json_object_is_type(value, json_type_object)) return km_error(km, "Invalid catalog entry");
+            if ((i < 3 && !km_valid_id(id)) || !json_object_is_type(value, json_type_object)) return km_error(km, "Invalid catalog entry");
             if (i < 3 && validate_resource(km, id, value) < 0) return -1;
             if (i == 0 && validate_mcp(km, id, value) < 0) return -1;
             if (i == 2 && km_subagent_validate(km, id, value) < 0) return -1;
@@ -239,7 +250,7 @@ int km_save(Km *km) {
     int64_t revision = json_object_get_int64(km_get(km->catalog, "revision"));
     if (revision == INT64_MAX) return km_error(km, "Catalog revision exhausted");
     int version = json_object_get_int(km_get(km->catalog, "version"));
-    if (json_object_object_length(km_resources(km, "subagent")))
+    if (version < 2 && json_object_object_length(km_resources(km, "subagent")))
         json_object_object_add(km->catalog, "version", json_object_new_int(2));
     json_object_object_add(km->catalog, "revision", json_object_new_int64(revision + 1));
     const char *text = json_object_to_json_string_ext(km->catalog, JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);

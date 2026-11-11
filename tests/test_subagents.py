@@ -48,16 +48,16 @@ class SubagentTests(unittest.TestCase):
         self.assertIn("reviewer", json.loads(self.cli("subagent", "list", "--json").stdout))
         self.assertEqual(json.loads(self.catalog.read_text())["version"], 2)
 
-    def test_mixed_groups_union_explicit_off_and_inherit(self):
+    def test_scoped_groups_union_explicit_off_and_inherit(self):
         self.add()
         self.cli("mcp", "add", "search", "--command", "/usr/bin/true")
-        self.cli("group", "add", "engineering")
-        self.cli("group", "include", "engineering", "subagent:reviewer", "mcp:search")
-        self.cli("group", "assign", "engineering", "--agents", "codex,claude")
-        self.cli("group", "add", "review")
-        self.cli("group", "include", "review", "subagent:reviewer")
-        self.cli("group", "assign", "review", "--agents", "codex")
-        self.cli("group", "disable", "engineering")
+        self.cli("subagent", "group", "add", "engineering")
+        self.cli("subagent", "group", "include", "engineering", "subagent:reviewer")
+        self.cli("subagent", "group", "assign", "engineering", "--agents", "codex,claude")
+        self.cli("subagent", "group", "add", "review")
+        self.cli("subagent", "group", "include", "review", "subagent:reviewer")
+        self.cli("subagent", "group", "assign", "review", "--agents", "codex")
+        self.cli("subagent", "group", "disable", "engineering")
         rows = self.status()["subagents"]["reviewer"]["agents"]
         self.assertTrue(rows["codex"]["enabled"])
         self.assertFalse(rows["claude"]["enabled"])
@@ -94,12 +94,12 @@ class SubagentTests(unittest.TestCase):
 
     def test_remove_cleans_group_membership(self):
         self.add()
-        self.cli("group", "add", "engineering")
-        self.cli("group", "include", "engineering", "subagent:reviewer")
+        self.cli("subagent", "group", "add", "engineering")
+        self.cli("subagent", "group", "include", "engineering", "subagent:reviewer")
         self.cli("subagent", "remove", "reviewer")
         data = self.status()
         self.assertEqual(data["subagents"], {})
-        self.assertEqual(data["groups"]["engineering"]["members"], [])
+        self.assertEqual(data["groups"]["subagent:engineering"]["members"], [])
 
     def test_invalid_changes_preserve_catalog(self):
         self.add()
@@ -120,8 +120,9 @@ class SubagentTests(unittest.TestCase):
                 self.assertEqual(self.catalog.read_bytes(), before)
 
     def test_v1_read_is_non_mutating_and_first_subagent_upgrades(self):
-        self.cli("group", "add", "existing")
+        self.cli("mcp", "add", "seed", "--command", "/usr/bin/true")
         old = json.loads(self.catalog.read_text())
+        old["groups"]["existing"] = {"enabled": True, "agents": [], "members": []}
         old.pop("subagents", None)
         old["version"] = 1
         self.catalog.write_text(json.dumps(old))

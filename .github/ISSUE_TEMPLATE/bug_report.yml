@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible Kitmux problem
+body:
+  - type: markdown
+    attributes:
+      value: Use synthetic configuration and redact private data. Report vulnerabilities through SECURITY.md; do not attach real catalog, journal, or authentication files.
+  - type: input
+    id: environment
+    attributes:
+      label: Versions and platform
+      description: Kitmux version, OS/architecture, and affected coding client/version.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal commands or steps using a temporary home and synthetic values.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and observed behavior
+      description: Include the relevant error with private values removed.
+    validations:
+      required: true

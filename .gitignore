@@ -1,0 +1,11 @@
+/build/
+/build-sanitize/
+/output/
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
+*.zip.sha256
+.env
+.env.*
+!.env.example

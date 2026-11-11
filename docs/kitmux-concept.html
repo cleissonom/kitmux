@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitmux — v0.3 custom subagent management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --paper: #f5f5f5; --paper-2: #ececec; --ink: #2d3142;
+      --muted: #4f5d75; --soft: #5a6580; --rule: rgba(45,49,66,.12);
+      --rule-solid: #bfc0c0; --accent: #bf4520; --accent-tint: rgba(191,69,32,.08);
+      --link: #2e5aa8; --sans: 'Geist', system-ui, sans-serif;
+      --serif: 'Instrument Serif', Georgia, serif;
+      --mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+    }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.6; }
+    main { max-width: 1376px; min-width: 0; margin: auto; padding: 48px; }
+    .eyebrow { margin: 0 0 12px; color: var(--soft); font: 500 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0 0 12px; font: 400 28px/1.15 var(--serif); }
+    .intro { max-width: 760px; margin: 0; font-size: 17px; color: var(--muted); }
+    .meta { margin: 20px 0 0; font: 11px/1.6 var(--mono); color: var(--soft); }
+    .section-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin: 36px 0 16px; padding-top: 24px; border-top: 1px solid var(--rule-solid); }
+    h2 { margin: 0; font: 600 18px/1.4 var(--sans); }
+    .section-heading span { font: 11px var(--mono); color: var(--soft); }
+    .diagram-container { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; }
+    svg { display: block; width: 100%; min-width: 1280px; }
+    .zone { fill: rgba(45,49,66,.02); stroke: var(--rule-solid); stroke-width: 1; }
+    .zone-label { font: 500 8px var(--mono); fill: var(--soft); letter-spacing: .14em; }
+    .edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+    .mask { fill: var(--paper); }
+    .box { fill: var(--paper); stroke: var(--muted); stroke-width: 1; }
+    .store { fill: var(--paper-2); }
+    .focal { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.5; }
+    .node-name { font: 600 12px var(--sans); fill: var(--ink); }
+    .node-copy { font: 400 11px var(--sans); fill: var(--muted); }
+    .node-tech { font: 400 9px var(--mono); fill: var(--soft); }
+    .tag { font: 500 8px var(--mono); fill: var(--soft); letter-spacing: .1em; }
+    .legend { font: 400 10px var(--sans); fill: var(--muted); }
+    .caption { color: var(--muted); font-size: 13px; margin: 12px 0 0; max-width: 1000px; }
+    .table-wrap { max-width: 100%; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 640px; text-align: left; font-size: 14px; }
+    th { padding: 12px 16px; border-bottom: 1px solid var(--rule-solid); font-weight: 600; }
+    td { padding: 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+    th:first-child, td:first-child { padding-left: 0; }
+    td small { display: block; color: var(--soft); margin-top: 4px; }
+    .on { font-weight: 600; }
+    .off { color: var(--soft); }
+    .two-column { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 32px; align-items: start; }
+    .terminal { min-width: 0; max-width: 100%; overflow-x: auto; background: var(--ink); color: var(--paper); border: 1px solid var(--muted); border-radius: 8px; }
+    .terminal-bar { padding: 12px 20px; border-bottom: 1px solid #5a6580; font: 11px var(--mono); color: #bfc0c0; }
+    pre { margin: 0; padding: 24px; font: 12px/1.9 var(--mono); tab-size: 2; }
+    .term-accent { color: #f08a59; }
+    .term-muted { color: #bfc0c0; }
+    .notes p { margin: 0 0 20px; font-size: 14px; color: var(--muted); }
+    .notes strong { color: var(--ink); }
+    .steps { list-style: none; margin: 0; padding: 0; }
+    .steps li { display: grid; grid-template-columns: 100px 1fr; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+    .steps b { font: 500 12px var(--mono); }
+    .steps b small { display: block; margin-top: 6px; font: 10px var(--mono); color: var(--soft); }
+    .steps span { color: var(--muted); }
+    .subagent-diagram { min-width: 1280px; }
+    .release-label { color: var(--accent); font-weight: 600; }
+    .actions { padding: 16px 20px; border: 1px solid var(--rule-solid); font-size: 14px; }
+    .commands { margin-top: 20px; border-left: 2px solid var(--accent); background: var(--paper-2); }
+    .commands pre { overflow-x: auto; font-size: 11px; }
+    a { color: var(--link); text-underline-offset: 3px; }
+    footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--rule-solid); color: var(--soft); font: 11px/1.7 var(--mono); }
+    @media print {
+      main { padding: 0; }
+      .diagram-container, .table-wrap, .terminal { overflow-x: visible; }
+      svg, table { min-width: 0; }
+      .two-column { grid-template-columns: minmax(0, 1fr); }
+      pre { font-size: 9px; white-space: pre-wrap; }
+      .section-heading { break-after: avoid; }
+      .diagram-container, tr { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Product architecture / v0.3</p>
+    <h1>Kitmux. One kit, your choice of agents.</h1>
+    <p class="intro">MCPs, skills, and your custom subagents in one catalog. Organize them into groups and choose what is available to Codex, Claude Code, and OpenCode. V0.3 adds reusable subagent definitions to the same keyboard-driven workflow.</p>
+    <p class="meta">V0.3 AVAILABLE · MCPS + SKILLS + SUBAGENTS · C17 · MACOS FIRST · NO GUI</p>
+  </header>
+
+  <div class="section-heading"><h2>One catalog. Separate client integrations.</h2><span>01 / architecture + v0.3 extension</span></div>
+  <figure style="margin:0">
+    <div class="diagram-container" tabindex="0" aria-label="Architecture diagram; scroll horizontally on narrow screens">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="kitmux-concept-title kitmux-concept-desc">
+        <title id="kitmux-concept-title">Kitmux architecture</title>
+        <desc id="kitmux-concept-desc">Groups assign MCPs, skills, and custom subagent definitions through independent client adapters, while existing managed MCP bridges supervise their own local processes.</desc>
+        <defs>
+          <marker id="kitmux-concept-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#4f5d75"/></marker>
+        </defs>
+        <rect width="1280" height="720" fill="#f5f5f5"/>
+
+        <rect class="zone" x="40" y="72" width="256" height="552" rx="8"/>
+        <rect class="zone" x="332" y="72" width="568" height="552" rx="8"/>
+        <rect class="zone" x="976" y="72" width="264" height="552" rx="8"/>
+        <text class="zone-label" x="64" y="96">INPUTS</text>
+        <text class="zone-label" x="356" y="96">KITMUX · ONE C EXECUTABLE</text>
+        <text class="zone-label" x="1000" y="96">YOUR CLIENTS</text>
+
+        <!-- Control relationships only; protocol traffic stays in the written plan. -->
+        <path class="edge" d="M 272 164 H 420 Q 428 164 428 172 V 240" marker-end="url(#kitmux-concept-arrow)"/>
+        <path class="edge" d="M 272 456 H 404 Q 412 456 412 448 V 376" marker-end="url(#kitmux-concept-arrow)"/>
+        <line class="edge" x1="580" y1="308" x2="660" y2="308" marker-end="url(#kitmux-concept-arrow)"/>
+        <path class="edge" d="M 876 274 H 916 Q 924 274 924 266 V 172 Q 924 164 932 164 H 1000" marker-end="url(#kitmux-concept-arrow)"/>
+        <line class="edge" x1="876" y1="308" x2="1000" y2="308" marker-end="url(#kitmux-concept-arrow)"/>
+        <path class="edge" d="M 876 342 H 916 Q 924 342 924 350 V 444 Q 924 452 932 452 H 1000" marker-end="url(#kitmux-concept-arrow)"/>
+        <line class="edge" x1="508" y1="376" x2="508" y2="480" marker-end="url(#kitmux-concept-arrow)"/>
+
+        <g data-node="terminal">
+          <rect class="mask" x="64" y="116" width="208" height="96" rx="6"/>
+          <rect class="box" x="64" y="116" width="208" height="96" rx="6"/>
+          <text class="tag" x="84" y="140">CONTROL</text>
+          <text class="node-name" x="84" y="164">Interactive terminal</text>
+          <text class="node-tech" x="84" y="188">kitmux · menus + commands</text>
+        </g>
+        <g data-node="catalog">
+          <rect class="mask" x="64" y="396" width="208" height="120" rx="6"/>
+          <rect class="box store" x="64" y="396" width="208" height="120" rx="6"/>
+          <text class="tag" x="84" y="420">LOCAL LIBRARY</text>
+          <text class="node-name" x="84" y="444">MCPs · skills · subagents</text>
+          <text class="node-copy" x="84" y="468">Subagents available in v0.3</text>
+          <text class="node-tech" x="84" y="492">catalog + package store</text>
+        </g>
+        <g data-node="groups">
+          <rect class="mask" x="356" y="240" width="224" height="136" rx="6"/>
+          <rect class="box focal" x="356" y="240" width="224" height="136" rx="6"/>
+          <text class="tag" x="376" y="264">POLICY</text>
+          <text class="node-name" x="376" y="288">Groups + assignments</text>
+          <text class="node-copy" x="376" y="312">What is enabled?</text>
+          <text class="node-copy" x="376" y="332">Which client receives it?</text>
+          <text class="node-copy" x="376" y="352">Explain every effective choice.</text>
+        </g>
+        <g data-node="adapters">
+          <rect class="mask" x="660" y="240" width="216" height="136" rx="6"/>
+          <rect class="box" x="660" y="240" width="216" height="136" rx="6"/>
+          <text class="tag" x="680" y="264">THREE INDEPENDENT ADAPTERS</text>
+          <text class="node-name" x="680" y="288">Client integrations</text>
+          <text class="node-copy" x="680" y="312">Native files + selected resources</text>
+          <text class="node-copy" x="680" y="336">Preserve each client's rules.</text>
+          <text class="node-copy" x="680" y="356">Validate each client mapping.</text>
+        </g>
+        <g data-node="codex">
+          <rect class="mask" x="1000" y="116" width="216" height="96" rx="6"/>
+          <rect class="box store" x="1000" y="116" width="216" height="96" rx="6"/>
+          <text class="tag" x="1020" y="140">CLIENT</text>
+          <text class="node-name" x="1020" y="164">Codex</text>
+          <text class="node-copy" x="1020" y="188">Own permissions and sessions</text>
+        </g>
+        <g data-node="claude">
+          <rect class="mask" x="1000" y="260" width="216" height="96" rx="6"/>
+          <rect class="box store" x="1000" y="260" width="216" height="96" rx="6"/>
+          <text class="tag" x="1020" y="284">CLIENT</text>
+          <text class="node-name" x="1020" y="308">Claude Code</text>
+          <text class="node-copy" x="1020" y="332">Own permissions and sessions</text>
+        </g>
+        <g data-node="opencode">
+          <rect class="mask" x="1000" y="404" width="216" height="96" rx="6"/>
+          <rect class="box store" x="1000" y="404" width="216" height="96" rx="6"/>
+          <text class="tag" x="1020" y="428">CLIENT</text>
+          <text class="node-name" x="1020" y="452">OpenCode</text>
+          <text class="node-copy" x="1020" y="476">Own permissions and sessions</text>
+        </g>
+        <g data-node="runtime">
+          <rect class="mask" x="356" y="480" width="224" height="112" rx="6"/>
+          <rect class="box" x="356" y="480" width="224" height="112" rx="6"/>
+          <text class="tag" x="376" y="504">V0.2 AVAILABLE · MCP ONLY</text>
+          <text class="node-name" x="376" y="528">Per-connection bridges</text>
+          <text class="node-copy" x="376" y="552">Live stop + reconnect</text>
+          <text class="node-copy" x="376" y="572">Owned upstream process + status</text>
+        </g>
+
+        <line x1="40" y1="660" x2="1240" y2="660" stroke="#bfc0c0"/>
+        <line class="edge" x1="40" y1="688" x2="72" y2="688" marker-end="url(#kitmux-concept-arrow)"/>
+        <text class="legend" x="84" y="692">Applies a selection</text>
+        <rect x="460" y="680" width="16" height="16" rx="2" fill="rgba(191,69,32,.08)" stroke="#bf4520"/>
+        <text class="legend" x="488" y="692">Shared policy</text>
+        <text class="legend" x="1240" y="692" text-anchor="end">Share definitions. Keep sessions separate.</text>
+      </svg>
+    </div>
+    <figcaption class="caption">The arrows show configuration decisions. V0.2 already provides optional local MCP bridges; subagent profiles join the catalog in v0.3. Each client retains its own sessions, delegation, and permission rules.</figcaption>
+  </figure>
+
+  <div class="section-heading"><h2>Groups are the main control.</h2><span>02 / illustrative assignments</span></div>
+  <div class="table-wrap" tabindex="0" aria-label="Example group assignments; scroll horizontally on narrow screens">
+    <table>
+      <thead><tr><th scope="col">Group</th><th scope="col">Contents</th><th scope="col">State</th><th scope="col">Codex</th><th scope="col">Claude Code</th><th scope="col">OpenCode</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Communication</strong></td><td>Teams + Slack<small>meeting-notes skill · triage-assistant subagent (v0.3)</small></td><td class="on">On</td><td class="on">Assigned</td><td class="on">Assigned</td><td class="on">Assigned</td></tr>
+        <tr><td>Engineering</td><td>GitHub<small>code-review skill · code-reviewer subagent (v0.3)</small></td><td class="on">On</td><td class="on">Assigned</td><td class="off">—</td><td class="on">Assigned</td></tr>
+        <tr><td>Writing</td><td>humanizer skill</td><td class="on">On</td><td class="off">—</td><td class="on">Assigned</td><td class="off">—</td></tr>
+        <tr><td>Research</td><td>Search<small>research-notes skill</small></td><td class="off">Off</td><td>Assigned, inactive</td><td>Assigned, inactive</td><td>Assigned, inactive</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">V0.3 groups can mix all three resource types. Global off and an explicit per-client off override group membership. An enabled assigned group makes a compatible definition available; it does not automatically grant the subagent additional MCPs, skills, or permissions.</p>
+
+  <div class="section-heading"><h2>Your custom subagents become managed resources.</h2><span>03 / v0.3 definition management</span></div>
+  <figure style="margin:0">
+    <div class="diagram-container" tabindex="0" aria-label="Subagent definition flow">
+      <svg class="subagent-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-labelledby="kitmux-subagents-title kitmux-subagents-desc">
+        <title id="kitmux-subagents-title">Custom subagent management in v0.3</title>
+        <desc id="kitmux-subagents-desc">Reusable subagent definitions pass through group policy and client-specific projections before native clients discover and invoke them.</desc>
+        <defs>
+          <marker id="kitmux-subagents-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#4f5d75"/></marker>
+        </defs>
+        <rect width="1280" height="400" fill="#f5f5f5"/>
+        <text class="zone-label" x="40" y="64">V0.3 · CUSTOM SUBAGENT DEFINITIONS</text>
+        <line class="edge" x1="304" y1="192" x2="352" y2="192" marker-end="url(#kitmux-subagents-arrow)"/>
+        <line class="edge" x1="616" y1="192" x2="664" y2="192" marker-end="url(#kitmux-subagents-arrow)"/>
+        <line class="edge" x1="928" y1="192" x2="976" y2="192" marker-end="url(#kitmux-subagents-arrow)"/>
+        <g data-node="subagent-definition">
+          <rect class="mask" x="40" y="112" width="264" height="160" rx="6"/>
+          <rect class="box focal" x="40" y="112" width="264" height="160" rx="6"/>
+          <text class="tag" x="60" y="140">CUSTOM PROFILE</text>
+          <text class="node-name" x="60" y="168">Reusable definition</text>
+          <text class="node-copy" x="60" y="196">Name, purpose, and instructions</text>
+          <text class="node-copy" x="60" y="220">Source + per-client settings</text>
+          <text class="node-tech" x="60" y="248">example: code-reviewer</text>
+        </g>
+        <g data-node="subagent-policy">
+          <rect class="mask" x="352" y="112" width="264" height="160" rx="6"/>
+          <rect class="box" x="352" y="112" width="264" height="160" rx="6"/>
+          <text class="tag" x="372" y="140">EXISTING GROUP RULES</text>
+          <text class="node-name" x="372" y="168">Availability policy</text>
+          <text class="node-copy" x="372" y="196">Choose groups and client targets.</text>
+          <text class="node-copy" x="372" y="220">Global off + per-client overrides</text>
+          <text class="node-copy" x="372" y="248">Report unavailable dependencies.</text>
+        </g>
+        <g data-node="subagent-projection">
+          <rect class="mask" x="664" y="112" width="264" height="160" rx="6"/>
+          <rect class="box store" x="664" y="112" width="264" height="160" rx="6"/>
+          <text class="tag" x="684" y="140">CLIENT ADAPTERS</text>
+          <text class="node-name" x="684" y="168">Native definitions</text>
+          <text class="node-copy" x="684" y="196">TOML or Markdown / JSONC</text>
+          <text class="node-copy" x="684" y="220">Preserve scope and native options.</text>
+          <text class="node-copy" x="684" y="248">Preview changes and conflicts.</text>
+        </g>
+        <g data-node="subagent-delegation">
+          <rect class="mask" x="976" y="112" width="264" height="160" rx="6"/>
+          <rect class="box" x="976" y="112" width="264" height="160" rx="6"/>
+          <text class="tag" x="996" y="140">NATIVE CLIENT RUNTIME</text>
+          <text class="node-name" x="996" y="168">Future delegation</text>
+          <text class="node-copy" x="996" y="196">The client discovers and runs it.</text>
+          <text class="node-copy" x="996" y="220">Show refresh requirements.</text>
+          <text class="node-copy" x="996" y="248">Running work stays native.</text>
+        </g>
+        <line x1="40" y1="332" x2="1240" y2="332" stroke="#bfc0c0"/>
+        <line class="edge" x1="40" y1="360" x2="72" y2="360" marker-end="url(#kitmux-subagents-arrow)"/>
+        <text class="legend" x="84" y="364">Native definition flow</text>
+        <text class="legend" x="1240" y="364" text-anchor="end">Manage definitions. Each client owns execution.</text>
+      </svg>
+    </div>
+    <figcaption class="caption">Enable or disable a profile for future delegation after native refresh. Editing or removing a definition does not stop an existing subagent, clear its context, or remove its transcripts.</figcaption>
+  </figure>
+  <p class="actions"><strong>Manage a profile:</strong> create · import · edit · duplicate · group · assign clients · enable / disable · remove · preview / restore.</p>
+  <div class="table-wrap" tabindex="0" aria-label="Native custom subagent formats and compatibility">
+    <table>
+      <thead><tr><th scope="col">Client</th><th scope="col">Native profile</th><th scope="col">What the adapter must preserve</th></tr></thead>
+      <tbody>
+        <tr><td>Codex</td><td><code>~/.codex/agents/*.toml</code><small>Project scope stays native</small></td><td>Developer instructions and supported overrides. Subagents inherit parent MCP servers, sandbox, and approval settings.</td></tr>
+        <tr><td>Claude Code</td><td><code>~/.claude/agents/*.md</code><small>Markdown + YAML; project scope stays native</small></td><td>Native tool restrictions, skill preloading, MCP settings, and higher-precedence definitions.</td></tr>
+        <tr><td>OpenCode</td><td><code>~/.config/opencode/agents/*.md</code><small>Also JSON/JSONC; project scope stays native</small></td><td>Explicit subagent mode, native permissions, disabled state, and visibility. Hidden is not disabled.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">Share instructions and intent, with native variants where needed. Unsupported models, permissions, or resource mappings must be flagged for review. Membership never silently expands access; a prompt alone does not enforce a sandbox.</p>
+
+  <div class="section-heading"><h2>Subagents get their own place in the terminal.</h2><span>04 / v0.3 terminal controls</span></div>
+  <div class="two-column">
+    <div class="terminal" tabindex="0" aria-label="Static terminal interface concept">
+      <div class="terminal-bar">kitmux · subagents · v0.3 interface example</div>
+      <pre><span class="term-accent">kitmux</span>                   Codex · Claude Code · OpenCode
+
+Groups  MCPs  Skills  <span class="term-accent">Subagents</span>  Clients  Status
+<span class="term-muted">──────────────────────────────────────────────────────</span>
+SUBAGENT             STATE   CODEX   CLAUDE   OPENCODE
+<span class="term-accent">&gt; code-reviewer      ON      [x]     [ ]      [x]</span>
+  triage-assistant   ON      [x]     [x]      [x]
+  release-helper     OFF     [x]     [ ]      [x]
+
+code-reviewer                       Group: Engineering
+  Instructions       Shared
+  Client settings    Per-client variants
+  Availability       Refresh required after apply
+  Execution          Owned by each native client
+
+<span class="term-muted">↑↓ move  Enter details  Space select  / search
+n create  i import  x edit  p duplicate  e toggle  a assign</span></pre>
+    </div>
+    <aside class="notes">
+      <p><strong>Clients and subagents are different.</strong><br>Clients are Codex, Claude Code, and OpenCode. Subagents are the reusable custom profiles you manage and assign to those clients.</p>
+      <p><strong>Import the definitions you already use.</strong><br>Preview discovered profiles, their source and scope, and any conflicting names before adoption. Preserve per-client variants and originals for restore.</p>
+      <p><strong>Keep commands equally capable.</strong><br>Every screen action has a CLI equivalent, with plain output and JSON for scripts.</p>
+      <p><strong>Make availability explicit.</strong><br>Show available, disabled, incompatible, or refresh required. Loaded skills and running subagent work keep their existing native context.</p>
+    </aside>
+  </div>
+
+  <div class="commands" aria-label="Available v0.3 commands">
+    <pre><span class="release-label">V0.3 COMMANDS</span>
+kitmux subagent import --from codex,claude,opencode --preview
+kitmux subagent add code-reviewer --from ./code-reviewer.md \
+  --description "Review code changes"
+kitmux group include engineering subagent:code-reviewer
+kitmux subagent disable code-reviewer --agent claude
+kitmux sync --preview</pre>
+  </div>
+
+  <div class="section-heading"><h2>From tools and skills to custom subagents.</h2><span>05 / release sequence</span></div>
+  <ol class="steps">
+    <li><b>V0.1<small>Available</small></b><span>Catalog, groups, per-client assignments, skill packages, native MCP configuration, and the interactive CLI.</span></li>
+    <li><b>V0.2<small>Available</small></b><span>Local MCP bridges, live disable and reconnect, process diagnostics, and isolated native lifecycle tests for all three clients.</span></li>
+    <li><b>V0.3<small>Available</small></b><span>Custom subagent import, creation, editing, grouping, and per-client availability. Preserve native variants, preview conflicts, and support restore. Discovery and disable behavior verified in isolated native clients.</span></li>
+  </ol>
+  <footer>
+    Product architecture updated for the v0.3 implementation<br>
+    C17 + ncursesw · versioned catalog · desktop terminal · no GUI<br>
+    Overview: 8 components / 7 connections. Subagent detail: 4 components / 3 connections.<br>
+    See <a href="../README.md">current usage</a>, <a href="V0.3.md">v0.3 verification</a>, and <a href="PLAN.md">the original plan</a>.<br>
+    Native profile references: learn.chatgpt.com/docs/agent-configuration/subagents<br>
+    code.claude.com/docs/en/sub-agents · opencode.ai/docs/agents/
+  </footer>
+</main>
+</body>
+</html>

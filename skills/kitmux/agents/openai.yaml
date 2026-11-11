@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kitmux"
+  short_description: "Manage MCPs, skills, and custom subagents"
+  default_prompt: "Use $kitmux to manage MCP, skill, and subagent availability across my coding clients."
+policy:
+  allow_implicit_invocation: true

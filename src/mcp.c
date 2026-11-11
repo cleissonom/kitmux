@@ -83,6 +83,13 @@ static int server_options(Km *km, json_object *server, int argc, char **argv) {
     return 0;
 }
 
+static bool relative_command_moved(json_object *before, json_object *after) {
+    if (json_object_equal(km_get(before, "cwd"), km_get(after, "cwd"))) return false;
+    json_object *command = km_get(before, "command");
+    const char *program = command ? json_object_get_string(json_object_array_get_idx(command, 0)) : NULL;
+    return program && program[0] != '/';
+}
+
 static bool endpoint_changed(json_object *old, json_object *server) {
     const char *keys[] = {"transport", "command", "url"};
     for (size_t i = 0; i < KM_AGENT_COUNT; i++) {
@@ -91,6 +98,7 @@ static bool endpoint_changed(json_object *old, json_object *server) {
         bool different = !before || !after;
         for (size_t j = 0; !different && j < sizeof(keys) / sizeof(keys[0]); j++)
             different = !json_object_equal(km_get(before, keys[j]), km_get(after, keys[j]));
+        if (!different) different = relative_command_moved(before, after);
         json_object_put(before); json_object_put(after);
         if (different) return true;
     }
@@ -99,6 +107,8 @@ static bool endpoint_changed(json_object *old, json_object *server) {
 
 static int server_save(Km *km, int argc, char **argv, bool edit) {
     if (argc < 2 || !km_valid_id(argv[1])) return km_error(km, "MCP requires a valid server ID");
+    for (int i = 2; i < argc; i++)
+        if (!strcmp(argv[i], "--from")) return km_mcp_native_save(km, argc, argv, edit);
     json_object *resources = km_resources(km, "mcp"), *old = km_get(resources, argv[1]), *server = NULL;
     if (edit != (old != NULL)) return km_error(km, edit ? "Unknown MCP" : "MCP already exists; use edit");
     if (old) json_object_deep_copy(old, &server, NULL);

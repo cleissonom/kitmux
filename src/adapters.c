@@ -46,21 +46,29 @@ static int doctor(AdRun *run, bool flags[KM_AGENT_COUNT]) {
 int km_adapter_command(Km *km, int argc, char **argv) {
     if (!argc) return km_error(km,"expected adapter command");
     const char *verb=argv[0], *csv=NULL;
-    bool apply=false, configured_only=false, subagents_only=false, flags[KM_AGENT_COUNT];
+    bool apply=false, apply_requested=false, check=false, configured_only=false;
+    bool subagents_only=false, refresh=false, flags[KM_AGENT_COUNT];
     for (int i=1;i<argc;i++) {
-        if (!strcmp(argv[i],"--apply")) apply=true;
+        if (!strcmp(argv[i],"--apply")) { apply=true; apply_requested=true; }
         else if (!strcmp(argv[i],"--preview")) apply=false;
         else if (!strcmp(argv[i],"--configured")) configured_only=true;
         else if (!strcmp(argv[i],"--subagents")) subagents_only=true;
+        else if (!strcmp(argv[i],"--refresh")) refresh=true;
+        else if (!strcmp(argv[i],"--check")) check=true;
         else if ((!strcmp(argv[i],"--agent") || !strcmp(argv[i],"--from")) && i+1<argc) csv=argv[++i];
         else return km_error(km,"unknown adapter argument");
     }
     if (strcmp(verb,"sync") && strcmp(verb,"import") && strcmp(verb,"restore") && strcmp(verb,"doctor"))
         return km_error(km,"unknown adapter command");
     if (subagents_only && strcmp(verb,"import")) return km_error(km,"subagent selection requires import");
+    if (refresh && strcmp(verb,"import")) return km_error(km,"--refresh requires explicit import");
+    if (check && (strcmp(verb,"sync") || apply_requested))
+        return km_error(km,"Use sync --check without --apply");
     if (selected(km,csv,flags)<0) return -1;
     AdRun run;
     if (ad_open(&run,km,apply)<0) { ad_cleanup(&run); return -1; }
+    run.refresh=refresh;
+    run.check=check;
     run.management=json_object_new_object();
     int result=0;
     if (!strcmp(verb,"doctor")) result=doctor(&run,flags);

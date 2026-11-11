@@ -201,7 +201,7 @@ int ad_sync_mcp(AdRun *run, const char *agent) {
     return remove_missing(run,file,agent);
 }
 
-static json_object *canonical(Km *km, const char *agent, json_object *native) {
+json_object *ad_mcp_canonical(Km *km, const char *agent, json_object *native) {
     if (ad_server_shape(km,agent,native)<0) return NULL;
     json_object *resource=json_object_new_object(), *command=km_get(native,"command");
     const char *url=km_string(native,"url");
@@ -245,6 +245,20 @@ static bool compatible(json_object *a, json_object *b) {
     return true;
 }
 
+static bool native_enabled(const char *agent, json_object *native) {
+    if (!strcmp(agent,"opencode")) return !json_object_get_boolean(km_get(native,"disabled"));
+    return !km_get(native,"enabled") || json_object_get_boolean(km_get(native,"enabled"));
+}
+
+static int visibility_changed(AdRun *run, AdFile *file, json_object *record, json_object *native) {
+    const char *after=km_string(record,"after");
+    if (!after) return 1;
+    json_object *previous=file->toml ? ad_toml_parse(run->km,after) : ad_parse(run->km,after);
+    if (!previous) return -1;
+    bool changed=native_enabled(file->agent,previous)!=native_enabled(file->agent,native);
+    json_object_put(previous); return changed;
+}
+
 static int adopt(AdRun *run, AdFile *file, const char *agent, const char *id, const char *raw, json_object *native) {
     if (!km_valid_id(id)) return km_error(run->km,"native MCP identifier is unsupported");
     json_object *existing=km_get(km_resources(run->km,"mcp"),id);
@@ -253,7 +267,10 @@ static int adopt(AdRun *run, AdFile *file, const char *agent, const char *id, co
     /* Re-adopting our projection must never turn a bridge into its own upstream. */
     if (existing && record && ad_same(run->km,raw,km_string(record,"after"),file->toml))
         return ad_change(run,file,key,raw,true);
-    json_object *resource=canonical(run->km,agent,native);
+    if (run->refresh && existing && record && km_string(existing,"mode") &&
+        !strcmp(km_string(existing,"mode"),"managed"))
+        return km_error(run->km,"Cannot refresh an externally changed managed MCP (%s); reconcile its native bridge before import",id);
+    json_object *resource=ad_mcp_canonical(run->km,agent,native);
     if (!resource) return -1;
     if (existing) {
         json_object *variants=km_get(existing,"variants");
@@ -270,9 +287,11 @@ static int adopt(AdRun *run, AdFile *file, const char *agent, const char *id, co
     json_object *natives=km_get(resource,"native");
     if (!natives) { natives=json_object_new_object(); json_object_object_add(resource,"native",natives); }
     json_object_object_add(natives,agent,json_object_get(native));
-    bool enabled=!strcmp(agent,"opencode") ? !json_object_get_boolean(km_get(native,"disabled")) :
-        !km_get(native,"enabled") || json_object_get_boolean(km_get(native,"enabled"));
-    json_object_object_add(km_get(resource,"agents"),agent,json_object_new_string(enabled ? "on" : "off"));
+    int changed=record ? visibility_changed(run,file,record,native) : 1;
+    if (changed<0) return -1;
+    json_object *assignments=km_get(resource,"agents");
+    if (!record || changed || !km_get(assignments,agent))
+        json_object_object_add(assignments,agent,json_object_new_string(native_enabled(agent,native) ? "on" : "off"));
     return ad_change(run,file,key,raw,true);
 }
 

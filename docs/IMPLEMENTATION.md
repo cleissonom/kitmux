@@ -1,10 +1,19 @@
 # Architecture and verification
 
-Kitmux 0.3.0 is a C17 terminal application for MCP servers, Agent Skills, custom
+Kitmux 0.3.1 is a C17 terminal application for MCP servers, Agent Skills, custom
 subagents, groups, and assignments to Codex, Claude Code, and OpenCode. See the
 [README](../README.md) for setup and commands and [v0.3 notes](V0.3.md) for the
 current release. Earlier behavior is documented in [v0.2 notes](V0.2.md) and the
 [import compatibility record](IMPORT_FIX.md).
+
+V0.3.1 adds native MCP JSON source provisioning, policy-preserving skill source
+rebinding, explicit import refresh, read-only sync checks, and idempotent definition
+edits. Source
+provisioning retains each client's native options and preserves credentials only
+at matching endpoints. The Codex adapter patches individual values and nested
+tables while retaining comments, then validates the resulting definition.
+Refresh changes snapshots without rewriting native bytes or losing the original
+restore baseline. Drifted managed bridges remain rejected to protect upstreams.
 
 ## Implementation boundaries
 
@@ -45,9 +54,9 @@ Release verification on macOS arm64, 11 November 2026:
 
 | Command | Result |
 |---|---|
-| `make -j4 test` | 189 passed; 6 opt-in native cases skipped; 195 discovered |
-| `make -j4 sanitize` | 189 passed; 6 opt-in cases skipped; ASan/UBSan enabled |
-| `make test-native` | 6 passed; no skips |
+| `make -j4 test` | 214 passed; 6 opt-in native cases skipped; 220 discovered |
+| `make -j4 sanitize` | 214 passed; 6 opt-in cases skipped; ASan/UBSan enabled |
+| `make test-native` | v0.3.0 baseline: 6 passed; no skips |
 
 The tests use temporary homes, stub MCP processes, and synthetic local providers.
 They cover all assignment subsets, policy precedence, imports, native setting
@@ -61,6 +70,19 @@ commands, invalid native metadata, Unicode YAML offsets, JSON/Markdown projectio
 changes, nested discovery collisions, ambiguous interrupted calls, blocked
 shutdown output, and incomplete process scans. Build scaffolding, protocol test
 harnesses, and documentation were the test-first exceptions.
+
+The v0.3.1 provisioning work began with failing subprocess contracts for native
+MCP source loading, skill source rebinding, explicit drift refresh, and idempotent
+profile edits. Additional regressions cover same-content source changes, stale
+subdirectories, unsupported Codex values before commit, endpoint credential
+isolation (including changed stdio working directories), nested native comments,
+policy inspection without native secrets, preservation of raw assignments during
+refresh, and read-only checks of planned projections and interrupted journals.
+The focused command is `PYTHONPATH=tests python3 -m unittest test_provisioning
+test_import_refresh test_sync_check -v`; all 25 new cases pass. Native discovery
+qualification
+remains the documented v0.3.0 baseline; it was not rerun for these provisioning
+changes.
 
 See [native client qualification](NATIVE_CLIENT_QUALIFICATION.md) for exact client
 versions and tested surfaces and [runtime compatibility](RUNTIME_COMPATIBILITY.md)

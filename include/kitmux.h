@@ -8,7 +8,7 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-#define KM_VERSION "0.3.0"
+#define KM_VERSION "0.3.1"
 #define KM_MAX_FILE (8u * 1024u * 1024u)
 #define KM_AGENT_COUNT 3
 
@@ -49,6 +49,7 @@ int km_remove_resource(Km *km, const char *kind, const char *id);
 int km_dispatch(Km *km, int argc, char **argv);
 int km_group_command(Km *km, int argc, char **argv);
 int km_mcp_command(Km *km, int argc, char **argv);
+int km_mcp_native_save(Km *km, int argc, char **argv, bool editing);
 int km_skill_command(Km *km, int argc, char **argv);
 int km_subagent_command(Km *km, int argc, char **argv);
 int km_adapter_command(Km *km, int argc, char **argv);

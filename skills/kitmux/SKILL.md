@@ -30,12 +30,20 @@ kitmux import --from codex,claude,opencode --preview
 kitmux import --from codex,claude,opencode --apply
 kitmux sync --preview --agent codex
 kitmux sync --apply --agent codex
+kitmux sync --check --agent codex
 ```
 
 Inspect what this version's import actually reports; do not claim skipped
 resources were adopted. Preserve client-specific definitions and authentication
 when resolving conflicts. Never replace one client's native settings with
 another client's settings just to make import succeed.
+
+Use `import --refresh --from CLIENT --preview`, then `--apply`, to deliberately
+adopt external edits to owned direct MCPs and subagent profiles. Refresh preserves
+native bytes and the original restore baseline. Ordinary import/sync/restore keep
+conflict protection. Drifted managed bridges reject refresh to protect upstreams.
+For automation, `sync --check` is read-only and exits nonzero when native changes,
+a conflict, or pending journal recovery remain. Do not combine it with `--apply`.
 
 Import supports per-client MCP execution variants and existing filesystem skill
 aliases. Bundled system/plugin skills are not ordinary user packages. Preserve
@@ -79,6 +87,7 @@ its packages or native credentials.
 ```sh
 kitmux mcp add local-search --command /path/to/server -- --stdio
 kitmux mcp add docs --url https://example.invalid/mcp
+kitmux mcp edit docs --from /private/docs-codex.json --format codex
 kitmux mcp edit local-search --mode managed
 kitmux mcp status local-search --agent codex --json
 kitmux mcp reconnect local-search --agent codex --json
@@ -86,6 +95,14 @@ kitmux mcp reconnect local-search --agent codex --json
 
 Adding a definition does not install its executable. Keep imported MCPs in direct
 mode unless managed mode is explicitly intended and compatible.
+
+Native MCP source files are single JSON objects for all three formats: contents
+of `mcp_servers.ID`, `mcpServers.ID`, or `mcp.servers.ID`. They select one command
+or URL and may include client-specific options. Native edits preserve assignments
+and global availability. At matching endpoints (including stdio command, arguments,
+and working directory) they merge omitted existing native
+settings; endpoint changes use only the supplied source and never carry old
+credentials. Keep source credentials private; never copy them between clients.
 
 **Direct:** the native client owns the connection, including HTTP/OAuth.
 Reconnect may return `action_required`; report its native reload/reconnect step,
@@ -109,6 +126,7 @@ kitmux skill add owner/repository --path skills/reviewer --ref COMMIT
 kitmux skill enable reviewer --agent claude
 kitmux skill update reviewer --preview
 kitmux skill update reviewer --apply
+kitmux skill update reviewer --source /path/to/skills/reviewer --apply
 kitmux skill rollback reviewer
 ```
 

@@ -5,7 +5,7 @@ A C terminal manager for MCP servers, Agent Skills, and custom subagents across
 clients receive them, and manage availability from an interactive terminal or
 ordinary commands.
 
-**v0.3.0 · C17 · [MIT](LICENSE)**
+**v0.3.1 · C17 · [MIT](LICENSE)**
 
 - Manage MCP servers, complete skill packages, and custom subagent definitions.
 - Share resources through groups, with explicit controls for each coding client.
@@ -19,6 +19,8 @@ Version 0.3 adds custom subagent creation, import, editing, duplication, groups,
 and per-client availability. Native variants retain each client's model, tools,
 permissions, and other settings. The local MCP bridge and skill package controls
 remain available with the compatibility limits below.
+Version 0.3.1 adds native MCP source files, skill source rebinding, and explicit
+refresh of externally edited imports for configuration-as-code integrations.
 
 ## Build and run
 
@@ -77,6 +79,13 @@ execution variants under one catalog ID.
 ./build/kitmux status
 ```
 
+To adopt deliberate external edits to already-owned entries, preview and apply
+`import --refresh --from CLIENT`. Refresh retains the native file bytes and the
+original restore baseline while updating Kitmux's selected client snapshots.
+Ordinary import, sync, and restore continue to reject conflicting edits. Refresh
+rejects drifted managed MCP bridges; reconcile their native bridge configuration
+before importing so the bridge cannot become its own upstream.
+
 Skill discovery includes legacy Codex `.codex/skills`, shared `.agents/skills`,
 Claude `.claude/skills`, and OpenCode `.config/opencode/skills` plus its compatible
 shared roots. Identical complete packages are deduplicated while native client
@@ -120,6 +129,47 @@ Native configuration changes may require reloading the client or starting a new
 session. `status` reports desired availability alongside observed managed bridge
 processes. Native connection state and client tool refresh remain unverified;
 writing configuration is not proof of a connection.
+For automation, `kitmux sync --check [--agent CLIENT]` performs the same read-only
+planning and returns zero only when selected projections are current and no
+journal recovery is pending. A planned change, conflict, or pending journal
+returns nonzero. `--check` cannot be combined with `--apply`.
+
+## Configuration as code
+
+Use native MCP source files when provisioning options such as tool allowlists,
+timeouts, or per-client environment values:
+
+```sh
+kitmux mcp add docs --from ./docs-codex.json --format codex
+kitmux mcp edit docs --from ./docs-claude.json --format claude
+kitmux skill update reviewer --source ./skills/reviewer --preview
+kitmux skill update reviewer --source ./skills/reviewer --apply
+```
+
+For every format, the MCP source is **one JSON object**, not a complete client
+configuration: the contents of Codex's `mcp_servers.ID`, Claude's `mcpServers.ID`,
+or OpenCode's `mcp.servers.ID`. For example, a Codex source can contain
+`{"url":"https://example.invalid/mcp","enabled_tools":["search"]}`. Local Codex
+and Claude definitions use a command string plus an optional `args` array;
+OpenCode uses a command array. A source must select exactly one command or URL.
+
+Native edits change only that client's execution and options. Existing global
+availability, client assignments, groups, and runtime mode remain in force;
+new resources start unassigned. At an unchanged command/argument/working-directory
+or URL endpoint,
+source fields recursively merge with that client's existing native options,
+preserving omitted credentials and local settings. A changed endpoint replaces
+its native snapshot using only the supplied source; old credentials are not
+transferred. Other clients retain their own variants. Keep credential-bearing
+source files private and provide credentials again only for the intended endpoint.
+
+Skill updates with `--source DIRECTORY` retain policy and rollback history and
+rebind the update source even when package contents match. Repeated identical
+native MCP, subagent, and skill updates leave the catalog revision unchanged.
+An explicit new skill source resets the previous source's subdirectory and Git
+ref unless `--path` or `--ref` is supplied again.
+`status --json` exposes each resource's global `enabled` and raw `assignments`
+alongside effective availability; it omits MCP options and credentials.
 
 ## Keyboard controls
 

@@ -71,6 +71,9 @@ static json_object *resource_status(Km *km, const char *kind) {
         json_object *row = json_object_new_object();
         json_object *agents = agent_status(km, kind, id);
         if (!agents) { json_object_put(row); json_object_put(result); return NULL; }
+        json_object *enabled = km_get(resource, "enabled"), *assignments = km_get(resource, "agents");
+        json_object_object_add(row, "enabled", json_object_new_boolean(!enabled || json_object_get_boolean(enabled)));
+        json_object_object_add(row, "assignments", assignments ? json_object_get(assignments) : json_object_new_object());
         json_object_object_add(row, "agents", agents);
         if (!strcmp(kind, "mcp")) {
             const char *transport = km_string(resource, "transport"), *mode = km_string(resource, "mode");

@@ -113,14 +113,16 @@ static char *header_id(const char *s, size_t begin, size_t end) {
     toml_free(root); return copy;
 }
 
-static bool main_header(const char *s, size_t begin, size_t end, const char *id) {
+static bool table_header(const char *s, size_t begin, size_t end, const char *id,
+                         const char **tables, unsigned depth, bool exact) {
     char error[128], *line=strndup(s+begin,end-begin);
     if (!line) return false;
     toml_table_t *root=toml_parse(line,error,sizeof(error)); free(line);
     if (!root) return false;
     toml_table_t *servers=toml_table_in(root,"mcp_servers");
     toml_table_t *server=servers ? toml_table_in(servers,id) : NULL;
-    bool main=server && !toml_key_in(server,0);
+    for (unsigned i=0;server && i<depth;i++) server=toml_table_in(server,tables[i]);
+    bool main=server && (!exact || !toml_key_in(server,0));
     toml_free(root); return main;
 }
 
@@ -204,29 +206,14 @@ typedef struct {
     size_t line_start, line_end, value_start, value_end;
 } TomlField;
 
-static bool owned_field(const char *key) {
-    return !strcmp(key,"command") || !strcmp(key,"args") || !strcmp(key,"enabled");
-}
-
-static bool equal_except_owned(json_object *left, json_object *right) {
-    json_object_object_foreach(left,left_key,left_value) {
-        json_object *other=NULL;
-        if (owned_field(left_key)) continue;
-        if (!json_object_object_get_ex(right,left_key,&other) || !json_object_equal(left_value,other)) return false;
-    }
-    json_object_object_foreach(right,right_key,right_value) {
-        json_object *other=NULL;
-        if (owned_field(right_key)) continue;
-        if (!json_object_object_get_ex(left,right_key,&other) || !json_object_equal(right_value,other)) return false;
-    }
-    return true;
-}
-
 static bool assignment_start(const char *s, size_t begin, size_t end, const char *key, size_t *value) {
     size_t p=begin, length=strlen(key);
     while (p<end && isspace((unsigned char)s[p])) p++;
+    char quote=0;
+    if (p<end && (s[p]=='"' || s[p]=='\'')) quote=s[p++];
     if (end-p<length || strncmp(s+p,key,length)) return false;
     p+=length;
+    if (quote && (p==end || s[p++]!=quote)) return false;
     if (p<end && !isspace((unsigned char)s[p]) && s[p]!='=') return false;
     while (p<end && isspace((unsigned char)s[p])) p++;
     if (p==end || s[p++]!='=') return false;
@@ -255,7 +242,7 @@ static int value_span(Km *km, const char *s, size_t begin, size_t limit,
 }
 
 static int find_field(Km *km, const char *text, const char *id, const char *key,
-                      TomlField *field, size_t *insert) {
+                      TomlField *field, size_t *insert, const char **tables, unsigned depth) {
     size_t begin=0,end=0;
     int located=span(km,text,id,&begin,&end);
     if (located<0) return -1;
@@ -265,11 +252,10 @@ static int find_field(Km *km, const char *text, const char *id, const char *key,
         size_t line_end=line; while (line_end<end && text[line_end]!='\n') line_end++;
         size_t first=line; while (first<line_end && isspace((unsigned char)text[first])) first++;
         if (!lex.quote && !lex.depth && first<line_end && text[first]=='[') {
-            char *owner=header_id(text,first,line_end);
-            bool target=owner && !strcmp(owner,id); free(owner);
-            main=target && main_header(text,first,line_end,id);
+            bool was_main=main;
+            main=table_header(text,first,line_end,id,tables,depth,true);
             if (main) main_seen=true;
-            else if (target && main_seen && *insert==end) *insert=line;
+            else if (was_main && *insert==end) *insert=line;
         } else if (main && !lex.quote && !lex.depth) {
             size_t value=0;
             if (assignment_start(text,line,line_end,key,&value))
@@ -282,11 +268,14 @@ static int find_field(Km *km, const char *text, const char *id, const char *key,
 }
 
 static int insert_field(Km *km, char **text, size_t offset, const char *key, const char *value) {
+    json_object *name=json_object_new_string(key);
+    const char *quoted=json_object_to_json_string_ext(name,JSON_C_TO_STRING_PLAIN|JSON_C_TO_STRING_NOSLASHESCAPE);
     bool newline=offset && (*text)[offset-1]!='\n';
-    size_t size=strlen(key)+strlen(value)+(newline ? 6u : 5u);
+    size_t size=strlen(quoted)+strlen(value)+(newline ? 6u : 5u);
     char *line=malloc(size);
-    if (!line) return km_error(km,"out of memory");
-    snprintf(line,size,"%s%s = %s\n",newline ? "\n" : "",key,value);
+    if (!line) { json_object_put(name); return km_error(km,"out of memory"); }
+    snprintf(line,size,"%s%s = %s\n",newline ? "\n" : "",quoted,value);
+    json_object_put(name);
     int result=ad_replace(km,text,offset,offset,line); free(line); return result;
 }
 
@@ -297,14 +286,14 @@ static bool trailing_comment(const char *text, const TomlField *field) {
 }
 
 static int update_field(Km *km, char **text, const char *id, const char *key,
-                        bool existed, json_object *desired) {
+                        bool existed, json_object *desired, const char **tables, unsigned depth) {
     TomlField field={0}; size_t insert=0;
-    int found=find_field(km,*text,id,key,&field,&insert);
+    int found=find_field(km,*text,id,key,&field,&insert,tables,depth);
     if (found<0) return -1;
     if (existed != (found>0)) return km_error(km,"unsupported TOML key syntax for adopted %s; original preserved",key);
     if (!desired) {
         if (!found) return 0;
-        if (field.multiline) return km_error(km,"cannot safely remove multiline adopted args; original TOML preserved");
+        if (field.multiline) return km_error(km,"cannot safely remove multiline adopted field; original TOML preserved");
         size_t end=field.value_end;
         if (!trailing_comment(*text,&field)) {
             end=field.line_end;
@@ -322,26 +311,66 @@ static int update_field(Km *km, char **text, const char *id, const char *key,
     free(value); return result;
 }
 
+static int remove_headers(Km *km, char **text, const char *id, const char **tables, unsigned depth) {
+    Lex lex={0};
+    for (size_t line=0;(*text)[line];) {
+        size_t end=line; while ((*text)[end] && (*text)[end]!='\n') end++;
+        size_t first=line; while (first<end && isspace((unsigned char)(*text)[first])) first++;
+        if (!lex.quote && !lex.depth && (*text)[first]=='[' &&
+            table_header(*text,first,end,id,tables,depth,false)) {
+            Lex header={0}; size_t comment=scan_content(&header,*text,line,end);
+            size_t finish=comment<end ? comment : end+((*text)[end]=='\n');
+            if (ad_replace(km,text,line,finish,"")<0) return -1;
+            continue;
+        }
+        scan_line(&lex,*text,line,end); line=(*text)[end] ? end+1 : end;
+    }
+    return 0;
+}
+
+static int patch_fields(Km *km, char **text, const char *id, json_object *previous,
+                        json_object *native, const char **tables, unsigned depth);
+
+static int patch_field(Km *km, char **text, const char *id, const char *key,
+                       json_object *old, json_object *desired, const char **tables, unsigned depth) {
+    TomlField field={0}; size_t insert=0;
+    int found=find_field(km,*text,id,key,&field,&insert,tables,depth);
+    if (found<0) return -1;
+    if (found || !json_object_is_type(old,json_type_object))
+        return update_field(km,text,id,key,old!=NULL,desired,tables,depth);
+    if (depth>=32 || (desired && !json_object_is_type(desired,json_type_object)))
+        return km_error(km,"unsupported nested Codex MCP value; original preserved");
+    tables[depth]=key;
+    json_object *empty=desired ? NULL : json_object_new_object();
+    int result=patch_fields(km,text,id,old,desired ? desired : empty,tables,depth+1);
+    json_object_put(empty);
+    if (!result && !desired) result=remove_headers(km,text,id,tables,depth+1);
+    return result;
+}
+
+static int patch_fields(Km *km, char **text, const char *id, json_object *previous,
+                        json_object *native, const char **tables, unsigned depth) {
+    json_object_object_foreach(previous,key,old) {
+        json_object *desired=km_get(native,key);
+        if (!json_object_equal(old,desired) && patch_field(km,text,id,key,old,desired,tables,depth)<0) return -1;
+    }
+    json_object_object_foreach(native,new_key,value) {
+        if (!km_get(previous,new_key) && patch_field(km,text,id,new_key,NULL,value,tables,depth)<0) return -1;
+    }
+    return 0;
+}
+
 char *ad_toml_render(Km *km, json_object *native, const char *id, const char *base) {
     json_object *previous=base ? ad_toml_parse(km,base) : NULL;
     if (base && !previous) return NULL;
     if (previous && json_object_equal(previous,native)) { json_object_put(previous); return strdup(base); }
-    /* Imported TOML keeps all native policy, auth, and comments; Kitmux owns only these projections. */
+    /* Patch typed values within this owned table and retain native comments. */
     if (previous) {
-        if (!equal_except_owned(previous,native)) {
-            json_object_put(previous);
-            km_error(km,"changing adopted Codex fields beyond command, args, or enabled requires explicit re-import; original TOML preserved");
-            return NULL;
-        }
         char *result=strdup(base);
-        const char *keys[]={"command","args","enabled"};
+        const char *tables[33]={NULL};
         if (!result) { json_object_put(previous); km_error(km,"out of memory"); return NULL; }
-        for (size_t i=0;i<sizeof(keys)/sizeof(keys[0]);i++) {
-            json_object *old=km_get(previous,keys[i]), *desired=km_get(native,keys[i]);
-            if (json_object_equal(old,desired)) continue;
-            if (update_field(km,&result,id,keys[i],old!=NULL,desired)<0) {
-                json_object_put(previous); free(result); return NULL;
-            }
+        if (patch_fields(km,&result,id,previous,native,tables,0)<0) {
+            json_object_put(previous); free(result); return NULL;
         }
         json_object *rendered=ad_toml_parse(km,result);
         bool valid=rendered && json_object_equal(rendered,native);

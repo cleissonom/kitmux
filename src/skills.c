@@ -3,6 +3,7 @@
 #include <string.h>
 
 typedef struct {
+    const char *source;
     const char *subdir;
     const char *ref;
     bool apply;
@@ -18,6 +19,7 @@ static int options(Km *km, int argc, char **argv, bool review, Options *out) {
             mode_seen = true;
         }
         else if (!strcmp(argv[i], "--path") && i + 1 < argc) out->subdir = argv[++i];
+        else if (review && !strcmp(argv[i], "--source") && !out->source && i + 1 < argc) out->source = argv[++i];
         else if (!strcmp(argv[i], "--ref") && i + 1 < argc) out->ref = argv[++i];
         else return km_error(km, "unknown or incomplete skill option: %s", argv[i]);
     }
@@ -87,10 +89,10 @@ static int apply_update(Km *km, const char *name, json_object *existing, KmSkill
 
 static int inspect_update(Km *km, const char *name, json_object *existing,
                            Options *choice, KmSkill *skill) {
-    const char *source = km_string(existing, "source");
+    const char *source = choice->source ? choice->source : km_string(existing, "source");
     if (!source) return km_error(km, "skill has no update source");
-    const char *subdir = choice->subdir ? choice->subdir : km_string(existing, "subdir");
-    const char *ref = choice->ref ? choice->ref : km_string(existing, "ref");
+    const char *subdir = choice->subdir ? choice->subdir : choice->source ? NULL : km_string(existing, "subdir");
+    const char *ref = choice->ref ? choice->ref : choice->source ? NULL : km_string(existing, "ref");
     int result = km_skill_acquire(km, source, subdir, ref && *ref ? ref : NULL, skill);
     if (!result) result = km_skill_inspect(km, skill);
     if (!result && strcmp(name, skill->name)) result = km_error(km, "updated skill name changed; install it as a separate skill");
@@ -110,8 +112,10 @@ static int skill_update(Km *km, int argc, char **argv) {
     const char *old_revision = km_string(existing, "revision");
     const char *old_ref = km_string(existing, "ref");
     const char *old_subdir = km_string(existing, "subdir");
+    const char *old_source = km_string(existing, "source");
     if (!result && (!previous_hash || !old_path || !old_revision)) result = km_error(km, "skill has incomplete installation metadata");
     bool unchanged = !result && !strcmp(previous_hash, skill.hash) && !strcmp(old_revision, skill.revision) &&
+                     old_source && !strcmp(old_source, skill.source) &&
                      !strcmp(old_ref ? old_ref : "", skill.ref) && !strcmp(old_subdir ? old_subdir : "", skill.subdir);
     if (unchanged) {
         printf("%s is already current (%s).\n", argv[1], skill.revision);

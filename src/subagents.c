@@ -119,6 +119,9 @@ static int define(Km *km, int argc, char **argv, bool editing) {
     json_object *resource = replacement(km, id, existing, &choice);
     if (!resource) return -1;
     if (km_subagent_validate(km, id, resource) < 0) { json_object_put(resource); return -1; }
+    if (existing && json_object_equal(existing, resource)) {
+        json_object_put(resource); printf("Subagent %s is already current.\n", id); return 0;
+    }
     json_object_object_add(resources, id, resource);
     if (km_save(km) < 0) return -1;
     printf("%s subagent %s. Native clients may need a reload.\n", editing ? "Updated" : "Added", id);

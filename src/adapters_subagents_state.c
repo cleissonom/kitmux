@@ -45,7 +45,8 @@ int ad_subagent_change(AdRun *run, const char *agent, const char *path,
     json_object *map=records(run), *record=km_get(map,path);
     if (record) {
         bool pending=json_object_get_boolean(km_get(run->state,"pending"));
-        if (!same(current,km_string(record,"after")) && !(pending && same(current,km_string(record,"previous")))) {
+        if (!same(current,km_string(record,"after")) && !(pending && same(current,km_string(record,"previous"))) &&
+            !(run->refresh && adopt && same(current,desired))) {
             free(current); return km_error(run->km,"Native subagent conflict for %s (%s); preserve your edit before retrying",agent,id);
         }
     } else {

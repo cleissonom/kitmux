@@ -24,9 +24,20 @@ static int set_origin(Km *km, json_object *resource, const char *agent, const ch
     json_object_object_add(origins,agent,origin); return 0;
 }
 
-static bool owned(AdRun *run, const char *path, const char *key) {
-    if (!key) return km_get(km_get(run->state,"subagent_files"),path)!=NULL;
-    return km_get(km_get(km_get(km_get(run->state,"files"),path),"entries"),key)!=NULL;
+static json_object *owned(AdRun *run, const char *path, const char *key) {
+    if (!key) return km_get(km_get(run->state,"subagent_files"),path);
+    return km_get(km_get(km_get(km_get(run->state,"files"),path),"entries"),key);
+}
+
+static int visibility_changed(AdRun *run, json_object *record, json_object *parsed,
+                               const char *agent, const char *format, const char *id) {
+    const char *after=km_string(record,"after");
+    if (!after) return 1;
+    json_object *previous=km_subagent_parse(run->km,after,format,id);
+    if (!previous) return -1;
+    bool before=json_object_get_boolean(km_get(km_get(km_get(previous,"native"),agent),"disabled"));
+    bool now=json_object_get_boolean(km_get(km_get(km_get(parsed,"native"),agent),"disabled"));
+    json_object_put(previous); return before!=now;
 }
 
 static json_object *merge_definition(AdRun *run, const char *agent, const char *id,
@@ -34,14 +45,17 @@ static json_object *merge_definition(AdRun *run, const char *agent, const char *
     json_object *parsed=km_subagent_parse(run->km,text,format,id);
     if (!parsed) return NULL;
     json_object *resources=km_resources(run->km,"subagent"), *resource=km_get(resources,id);
-    bool managed=owned(run,path,key);
+    json_object *record=owned(run,path,key);
+    bool managed=record!=NULL;
+    int changed=run->refresh && managed ? visibility_changed(run,record,parsed,agent,format,id) : 0;
+    if (changed<0) { json_object_put(parsed); return NULL; }
     if (!resource) { resource=parsed; json_object_object_add(resources,id,resource); }
     else {
         json_object *variant=km_get(km_get(parsed,"native"),agent), *existing=km_get(km_get(resource,"native"),agent);
         if (!managed && existing && strcmp(km_string(existing,"text"),text)) {
             json_object_put(parsed); km_error(run->km,"Subagent import conflicts with an existing %s variant (%s)",agent,id); return NULL;
         }
-        if (!managed || !existing) {
+        if (!managed || !existing || run->refresh) {
             json_object_object_add(variant,"description",json_object_new_string(km_string(resource,"description")));
             json_object_object_add(variant,"instructions",json_object_new_string(km_string(resource,"instructions")));
             json_object_object_add(object_at(resource,"native"),agent,json_object_get(variant));
@@ -50,7 +64,7 @@ static json_object *merge_definition(AdRun *run, const char *agent, const char *
     }
     if (set_origin(run->km,resource,agent,id,path,key)<0) return NULL;
     json_object *assignments=object_at(resource,"agents");
-    if (!managed || !km_get(assignments,agent)) {
+    if (!managed || !km_get(assignments,agent) || changed) {
         bool disabled=json_object_get_boolean(km_get(km_get(km_get(resource,"native"),agent),"disabled"));
         json_object_object_add(assignments,agent,json_object_new_string(disabled ? "off" : "on"));
     }

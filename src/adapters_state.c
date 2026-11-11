@@ -79,7 +79,8 @@ int ad_change(AdRun *run, AdFile *file, const char *key, const char *desired, bo
     if (record) {
         bool pending=json_object_get_boolean(km_get(run->state,"pending"));
         if (!ad_same(km,current,record_text(record,"after"),file->toml) &&
-            !(pending && ad_same(km,current,record_text(record,"previous"),file->toml))) {
+            !(pending && ad_same(km,current,record_text(record,"previous"),file->toml)) &&
+            !(run->refresh && adopt && ad_same(km,current,desired,file->toml))) {
             free(current); return km_error(km,"configuration conflict for %s (%s); preserve your edit before retrying",file->agent,key);
         }
     } else {
@@ -155,6 +156,18 @@ static int apply_link(AdRun *run, json_object *link) {
     return sync_link_parent(run->km,path);
 }
 
+static bool planned_changes(AdRun *run) {
+    if (json_object_get_boolean(km_get(run->state,"pending")) || json_object_array_length(run->links)) return true;
+    for (AdFile *file=run->files;file;file=file->next)
+        if (strcmp(file->original,file->text)) return true;
+    for (size_t i=0;i<json_object_array_length(run->subagent_actions);i++) {
+        json_object *action=json_object_array_get_idx(run->subagent_actions,i);
+        const char *before=km_string(action,"before"), *after=km_string(action,"after");
+        if ((!before || !after) ? before!=after : strcmp(before,after)!=0) return true;
+    }
+    return false;
+}
+
 int ad_finish(AdRun *run) {
     if (ad_subagent_check_actions(run)<0) return -1;
     for (AdFile *f=run->files;f;f=f->next) {
@@ -164,6 +177,10 @@ int ad_finish(AdRun *run) {
         int valid=f->toml ? 0 : ad_native_shape(run->km,f->agent,f->path,checked);
         json_object_put(checked);
         if (valid<0) return -1;
+    }
+    if (run->check) {
+        if (planned_changes(run)) return km_error(run->km,"Native sync changes are pending; run sync --preview or sync --apply");
+        puts("Selected native projections are current."); return 0;
     }
     if (!run->apply) {
         for (AdFile *f=run->files;f;f=f->next)

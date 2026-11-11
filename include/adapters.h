@@ -21,6 +21,8 @@ typedef struct {
     json_object *subagent_actions;
     bool apply;
     bool restore;
+    bool refresh;
+    bool check;
 } AdRun;
 
 json_object *ad_parse(Km *km, const char *text);
@@ -61,6 +63,7 @@ int ad_restore_links(AdRun *run, const char *agent);
 int ad_restore(AdRun *run, const char *agent);
 AdFile *ad_native_file(AdRun *run, const char *agent);
 json_object *ad_native(Km *km, json_object *resource, const char *id, const char *agent, bool enabled);
+json_object *ad_mcp_canonical(Km *km, const char *agent, json_object *native);
 char *ad_toml_raw(Km *km, const char *text, const char *id);
 int ad_toml_edit(Km *km, char **text, const char *id, const char *value);
 json_object *ad_toml_ids(Km *km, const char *text);

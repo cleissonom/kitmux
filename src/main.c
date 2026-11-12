@@ -19,6 +19,7 @@ void km_help(FILE *out) {
         "  mcp add|edit ID --command PROGRAM [--mode managed] -- ARGS...\n"
         "  mcp add|edit ID --url URL\n"
         "  mcp add|edit ID --from FILE --format codex|claude|opencode\n"
+        "  mcp add|edit ID [--description TEXT | --description-file FILE]\n"
         "  mcp list|show|remove ID\n"
         "  mcp enable|disable|inherit ID [--agent AGENT]\n"
         "  mcp reconnect ID --agent AGENT\n"

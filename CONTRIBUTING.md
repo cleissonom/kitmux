@@ -6,7 +6,7 @@ first so the design and compatibility requirements can be discussed.
 
 ## Local development
 
-Install the dependencies in the [README](README.md#build-and-run), including
+Install the dependencies in the [README](README.md#build-and-run-from-source), including
 Python 3.11+ for tests, then run:
 
 ```sh
@@ -19,8 +19,26 @@ Production code is C17. Tests use Python's standard library and local fixtures;
 the application does not require a Python or Node runtime. `make test-native`
 is an optional qualification suite for installed coding clients, with isolated
 homes and synthetic providers. See [native qualification](docs/NATIVE_CLIENT_QUALIFICATION.md).
-macOS arm64 is the verified platform; reports and fixes for Linux are welcome.
-GitHub Actions runs the ordinary and sanitizer suites on macOS.
+GitHub Actions runs the ordinary and sanitizer suites on macOS 15 (arm64 and
+x86_64) and Ubuntu 22.04 (arm64 and x86_64). Exact qualification evidence and
+remaining limitations are recorded in [the implementation notes](docs/IMPLEMENTATION.md).
+
+## Release builds
+
+`make release VERSION=v0.5.0` builds pinned dependency archives in a private
+`build-release-deps` prefix and packages the executable under `dist/`. It needs
+CMake, Perl, curl, and the normal compiler/build tools. The build downloads and
+checks source archives; it never installs those dependencies into the host.
+The executable retains only platform system libraries. Linux builds must run
+on glibc 2.35 (Ubuntu 22.04) to meet the supported baseline; macOS builds target
+15.0. System terminfo data is required for the TUI.
+
+The release workflow runs all tests, checks dependency linkage and architecture,
+and smoke-tests packaged executables without development libraries. Manual runs
+produce downloadable artifacts and checksums. A matching version tag publishes
+only after all four targets pass; publication stages a draft before exposing the
+complete asset set. Normal tests use staged local download fixtures and never
+download or build release dependencies.
 
 ## Making a change
 

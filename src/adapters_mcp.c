@@ -227,6 +227,9 @@ json_object *ad_mcp_canonical(Km *km, const char *agent, json_object *native) {
     if (env) json_object_object_add(resource,"env",json_object_get(env));
     const char *cwd=km_string(native,"cwd");
     if (cwd) json_object_object_add(resource,"cwd",json_object_new_string(cwd));
+    const char *description=km_string(native,"description");
+    if (description && strlen(description)==(size_t)json_object_get_string_len(km_get(native,"description")))
+        json_object_object_add(resource,"description",json_object_get(km_get(native,"description")));
     json_object_object_add(resource,"mode",json_object_new_string("direct"));
     json_object_object_add(resource,"enabled",json_object_new_boolean(true));
     json_object_object_add(resource,"agents",json_object_new_object());
@@ -273,6 +276,9 @@ static int adopt(AdRun *run, AdFile *file, const char *agent, const char *id, co
     json_object *resource=ad_mcp_canonical(run->km,agent,native);
     if (!resource) return -1;
     if (existing) {
+        /* An empty authored description deliberately suppresses imported text. */
+        if (!km_get(existing,"description") && km_get(resource,"description"))
+            json_object_object_add(existing,"description",json_object_get(km_get(resource,"description")));
         json_object *variants=km_get(existing,"variants");
         if (!compatible(existing,resource)) {
             json_object *execution=km_mcp_execution(resource,agent);

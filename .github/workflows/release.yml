@@ -1,0 +1,152 @@
+name: Release executables
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Qualify ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-x86_64
+          - runner: ubuntu-22.04
+            target: linux-x86_64
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Check release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^#define KM_VERSION "\([^"]*\)"/\1/p' include/kitmux.h)
+          tag="v$version"
+          if [ "$EVENT_NAME" = push ] && [ "$REF_NAME" != "$tag" ]; then
+            echo 'Tag does not match source version' >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake pkgconf json-c libyaml ncurses openssl
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake pkg-config libjson-c-dev libyaml-dev libncurses-dev libssl-dev perl curl ca-certificates file binutils
+      - name: Test
+        run: make -j2 test
+      - name: Address and undefined behavior sanitizers
+        run: make -j2 sanitize
+      - name: Build standalone release
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: make release VERSION="$RELEASE_TAG"
+      - name: Extract packaged executable
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/kitmux-smoke"
+          tar -xzf "dist/kitmux-$RELEASE_TAG-$TARGET.tar.gz" -C "$RUNNER_TEMP/kitmux-smoke"
+      - name: macOS smoke without Homebrew access
+        if: runner.os == 'macOS'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          sandbox-exec -p '(version 1)(allow default)(deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local/opt") (subpath "/usr/local/Cellar"))' \
+            sh scripts/smoke-release.sh "$RUNNER_TEMP/kitmux-smoke/kitmux-$RELEASE_TAG-$TARGET/kitmux"
+      - name: Linux smoke without development libraries
+        if: runner.os == 'Linux'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/kitmux-smoke:/artifact:ro" ubuntu:22.04 \
+            "/artifact/kitmux-$RELEASE_TAG-$TARGET/kitmux" --version
+          docker build -t kitmux-release-smoke - < scripts/release-smoke.Dockerfile
+          docker run --rm --init -v "$PWD:/work:ro" -v "$RUNNER_TEMP/kitmux-smoke:/artifact:ro" -w /work \
+            kitmux-release-smoke sh scripts/smoke-release.sh "/artifact/kitmux-$RELEASE_TAG-$TARGET/kitmux"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kitmux-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  assets:
+    name: Assemble verified release assets
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: kitmux-*
+          path: dist
+          merge-multiple: true
+      - name: Verify all targets and checksum
+        run: |
+          version=$(sed -n 's/^#define KM_VERSION "\([^"]*\)"/\1/p' include/kitmux.h)
+          cd dist
+          test "$(find . -name '*.tar.gz' | wc -l)" -eq 4
+          for target in darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64; do
+            test -s "kitmux-v$version-$target.tar.gz"
+          done
+          sha256sum kitmux-*.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kitmux-release-assets
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish complete release
+    needs: assets
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: kitmux-release-assets
+          path: dist
+      - name: Upload draft and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
+            test "$draft" = true || { echo 'Refusing to replace a published release' >&2; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Kitmux $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

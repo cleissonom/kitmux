@@ -8,7 +8,7 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-#define KM_VERSION "0.4.0"
+#define KM_VERSION "0.5.0"
 #define KM_MAX_FILE (8u * 1024u * 1024u)
 #define KM_AGENT_COUNT 3
 
@@ -69,7 +69,8 @@ void km_help(FILE *out);
  * Resources are maps in catalog.mcps / catalog.skills / catalog.subagents;
  * groups are catalog.groups. Scoped groups use catalog version 3 and kind:ID keys.
  * Resource: enabled bool (default true), agents map with on/off/inherit values.
- * MCP: transport stdio/http, command array, url, cwd, env object, mode direct/managed.
+ * MCP: transport stdio/http, command array, url, cwd, env object, mode direct/managed,
+ * optional description Markdown stored locally without native projection changes.
  * variants[agent] is a full execution (transport/command-or-url/env?/cwd?) without
  * optional-field inheritance. Shared explicit edits update every mapped variant.
  * Skill: path (complete immutable package), source, revision, subdir, hash.

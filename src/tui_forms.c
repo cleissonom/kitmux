@@ -55,8 +55,22 @@ static bool command_defaults(json_object *item, char *command, size_t size, char
     return true;
 }
 
+static bool mcp_description(KmUi *ui, bool editing, char *value, size_t size, char **option) {
+    const char *choices[] = {editing ? "Keep current description" : "Skip description for now",
+                            "Enter a short description", "Read a Markdown file", "Clear description"};
+    int selected = ui_choice("MCP description", choices, 4, 0);
+    if (selected < 0) return false;
+    if (!selected) return true;
+    *option = selected == 2 ? "--description-file" : "--description";
+    if (selected == 3) return true;
+    if (!ui_input(ui, "MCP description", selected == 2 ? "Markdown file" : "Description text", value, size)) return false;
+    if (selected == 2 && !*value) { ui_notice(ui, "Choose a Markdown file or skip the description."); return false; }
+    return true;
+}
+
 static void mcp_form(KmUi *ui, bool editing) {
     char id[65] = "", transport[16] = "stdio", command[PATH_MAX] = "", arguments[4096] = "";
+    char description[PATH_MAX] = "", *description_option = NULL;
     bool managed = false;
     if (editing && !ui_current(ui)) return;
     if (editing) {
@@ -67,6 +81,10 @@ static void mcp_form(KmUi *ui, bool editing) {
         value = km_string(item, "url"); if (value) snprintf(command, sizeof(command), "%s", value);
         else if (!command_defaults(item, command, sizeof(command), arguments, sizeof(arguments))) { ui_notice(ui, "Arguments exceed this form's limit; use mcp edit in the CLI."); return; }
     } else if (!ui_input(ui, "Add MCP", "MCP name", id, sizeof(id)) || !*id) return;
+    char original_command[sizeof(command)], original_arguments[sizeof(arguments)];
+    memcpy(original_command, command, sizeof(command));
+    memcpy(original_arguments, arguments, sizeof(arguments));
+    bool original_http = !strcmp(transport, "http"), original_managed = managed;
     if (!ui_input(ui, "MCP transport", "stdio or http", transport, sizeof(transport))) return;
     bool http = !strcmp(transport, "http");
     if (!http && strcmp(transport, "stdio")) { ui_notice(ui, "Transport must be stdio or http."); return; }
@@ -78,9 +96,17 @@ static void mcp_form(KmUi *ui, bool editing) {
     }
     if (!ui_input(ui, "MCP endpoint", http ? "HTTP URL" : "Executable path or command", command, sizeof(command)) || !*command) return;
     if (!http && !ui_input(ui, "MCP arguments", "Arguments (quotes supported; no shell evaluation)", arguments, sizeof(arguments))) return;
-    char *args[138] = {"mcp", editing ? "edit" : "add", id, http ? "--url" : "--command", command,
-                       "--mode", !http && managed ? "managed" : "direct"}; int count = 7;
-    if (!http) {
+    if (!mcp_description(ui, editing, description, sizeof(description), &description_option)) return;
+    /* Accepting defaults must retain each imported client's own execution. */
+    bool execution_changed = !editing || http != original_http || strcmp(command, original_command) ||
+                             (!http && strcmp(arguments, original_arguments));
+    char *args[140] = {"mcp", editing ? "edit" : "add", id}; int count = 3;
+    if (execution_changed) { args[count++] = http ? "--url" : "--command"; args[count++] = command; }
+    if (!editing || (!http && managed) != original_managed) {
+        args[count++] = "--mode"; args[count++] = !http && managed ? "managed" : "direct";
+    }
+    if (description_option) { args[count++] = description_option; args[count++] = description; }
+    if (!http && execution_changed) {
         args[count++] = "--";
         int tokens = ui_tokens(arguments, args + count, 128);
         if (tokens < 0) { ui_notice(ui, "Unmatched quote or too many arguments."); return; }

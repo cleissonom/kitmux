@@ -56,6 +56,8 @@ bool ui_confirm(KmUi *ui, const char *message);
 bool ui_modal_ready(void);
 bool ui_review(KmUi *ui, const char *title);
 void ui_view(KmUi *ui, const char *title);
+void ui_document_view(KmUi *ui, const char *title, const char *text, bool markdown);
+void ui_resource_details(KmUi *ui);
 int ui_choice(const char *title, const char *const *choices, int count, int initial);
 const char *ui_text_lines(const char *text, int row, int rows, int offset);
 void ui_refresh_status(KmUi *ui);

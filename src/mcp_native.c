@@ -1,4 +1,5 @@
 #include "adapters.h"
+#include "mcp_metadata.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,8 +15,13 @@ static json_object *object_at(json_object *parent, const char *key) {
     return object;
 }
 
-static int options(Km *km, int argc, char **argv, const char **path, const char **client) {
+static int options(Km *km, int argc, char **argv, const char **path, const char **client,
+                   KmMcpDescription *description) {
     for (int i = 2; i < argc; i++) {
+        if (i + 1 >= argc) return km_error(km, "MCP option needs a value");
+        int metadata = km_mcp_description_option(km, description, argv[i], argv[i + 1]);
+        if (metadata < 0) return -1;
+        if (metadata) { i++; continue; }
         const char **field = !strcmp(argv[i], "--from") ? path : !strcmp(argv[i], "--format") ? client : NULL;
         if (!field || *field || i + 1 >= argc) return km_error(km, "Use --from FILE --format codex|claude|opencode");
         *field = argv[++i];
@@ -88,6 +94,8 @@ static json_object *replacement(Km *km, json_object *old, json_object *native, c
     if (!parsed || !old) return parsed;
     json_object *resource = copy(km, old), *execution = km_mcp_execution(parsed, client);
     if (!resource || !execution) { json_object_put(resource); json_object_put(execution); json_object_put(parsed); return NULL; }
+    if (!km_get(resource, "description") && km_get(parsed, "description"))
+        json_object_object_add(resource, "description", json_object_get(km_get(parsed, "description")));
     json_object_object_del(execution, "mode");
     if (same_execution(resource, parsed)) {
         json_object *variants = km_get(resource, "variants");
@@ -113,13 +121,15 @@ static int validate_projection(Km *km, json_object *resource, const char *id, co
 
 int km_mcp_native_save(Km *km, int argc, char **argv, bool editing) {
     const char *path = NULL, *client = NULL;
-    if (options(km, argc, argv, &path, &client) < 0) return -1;
+    KmMcpDescription description = {0};
+    if (options(km, argc, argv, &path, &client, &description) < 0) return -1;
     json_object *resources = km_resources(km, "mcp"), *old = km_get(resources, argv[1]);
     if (editing != (old != NULL)) return km_error(km, editing ? "Unknown MCP" : "MCP already exists; use edit");
     json_object *native = source(km, path, client);
     if (!native) return -1;
     json_object *resource = replacement(km, old, native, client); json_object_put(native);
     if (!resource) return -1;
+    if (km_mcp_description_apply(km, resource, &description) < 0) { json_object_put(resource); return -1; }
     if (validate_projection(km, resource, argv[1], client) < 0) { json_object_put(resource); return -1; }
     if (old && json_object_equal(old, resource)) {
         json_object_put(resource); printf("MCP %s is already current.\n", argv[1]); return 0;

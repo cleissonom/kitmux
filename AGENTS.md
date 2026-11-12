@@ -13,6 +13,13 @@ Build with `make`; run `make test` and `make sanitize`. Dependencies come from
 pkg-config: json-c, yaml-0.1, ncursesw, and libcrypto. Never install dependencies
 or mutate live client configuration as part of a test.
 
+CI targets macOS 15 and Ubuntu 22.04, each on arm64 and x86_64. Release builds use
+`make release VERSION=vX.Y.Z`, pinned source archives, and private dependency
+prefixes; never install their bundled libraries globally. Keep native tests
+opt-in, and check packaged binaries without development libraries before release.
+The README's marked installation block is exercised directly by subprocess tests;
+keep its staged download/checksum/install behavior safe on both supported systems.
+
 `make test-native` opts into installed-client qualification. Keep its client homes,
 authentication, provider responses, and MCPs isolated; use synthetic loopback
 providers and never load live accounts. Normal tests skip these probes.

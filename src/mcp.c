@@ -1,4 +1,5 @@
 #include "kitmux.h"
+#include "mcp_metadata.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +65,7 @@ static int append_arguments(Km *km, json_object *execution, int argc, char **arg
 }
 
 static int server_options(Km *km, json_object *server, int argc, char **argv) {
+    KmMcpDescription description = {0};
     for (int i = 0; i < argc; ++i) {
         if (!strcmp(argv[i], "--")) {
             if (append_arguments(km, server, argc - i - 1, argv + i + 1) < 0) return -1;
@@ -74,13 +76,16 @@ static int server_options(Km *km, json_object *server, int argc, char **argv) {
                     if (append_arguments(km, execution, argc - i - 1, argv + i + 1) < 0) return -1;
                 }
             }
-            return 0;
+            return km_mcp_description_apply(km, server, &description);
         }
         if (i + 1 >= argc) return km_error(km, "MCP option needs a value");
         const char *option = argv[i++], *value = argv[i];
+        int metadata = km_mcp_description_option(km, &description, option, value);
+        if (metadata < 0) return -1;
+        if (metadata) continue;
         if (shared_option(km, server, option, value) < 0) return -1;
     }
-    return 0;
+    return km_mcp_description_apply(km, server, &description);
 }
 
 static bool relative_command_moved(json_object *before, json_object *after) {
@@ -107,7 +112,7 @@ static bool endpoint_changed(json_object *old, json_object *server) {
 
 static int server_save(Km *km, int argc, char **argv, bool edit) {
     if (argc < 2 || !km_valid_id(argv[1])) return km_error(km, "MCP requires a valid server ID");
-    for (int i = 2; i < argc; i++)
+    for (int i = 2; i < argc && strcmp(argv[i], "--"); i += 2)
         if (!strcmp(argv[i], "--from")) return km_mcp_native_save(km, argc, argv, edit);
     json_object *resources = km_resources(km, "mcp"), *old = km_get(resources, argv[1]), *server = NULL;
     if (edit != (old != NULL)) return km_error(km, edit ? "Unknown MCP" : "MCP already exists; use edit");
@@ -122,6 +127,9 @@ static int server_save(Km *km, int argc, char **argv, bool edit) {
     if (old && km_get(old, "native") && endpoint_changed(old, server)) {
         json_object_put(server);
         return km_error(km, "Imported endpoints carry native settings; add the changed endpoint under a new ID and review its configuration");
+    }
+    if (old && json_object_equal(old, server)) {
+        json_object_put(server); printf("MCP %s is already current.\n", argv[1]); return 0;
     }
     json_object_object_add(resources, argv[1], server);
     return km_save(km);

@@ -113,6 +113,8 @@ class TerminalTestCase(unittest.TestCase):
         terminal.send(b"/usr/bin/true\n")
         terminal.wait_text("Arguments (quotes supported")
         terminal.send(b"\n")
+        terminal.wait_text("Read a Markdown file")
+        terminal.send(b"\n")
         terminal.wait_text("Saved")
 
 
@@ -138,6 +140,8 @@ class TerminalTests(TerminalTestCase):
         terminal.wait_text("Executable path or command")
         terminal.send(b"\n")
         terminal.wait_text("Arguments (quotes supported")
+        terminal.send(b"\n")
+        terminal.wait_text("Read a Markdown file")
         terminal.send(b"\n")
         terminal.wait_text("Saved")
         terminal.send(b"q")
@@ -305,7 +309,7 @@ class TerminalTests(TerminalTestCase):
         terminal.send(b"3j\n")
         terminal.wait_text("opencode")
         self.assertIn(b"N/A", terminal.output)
-        terminal.send(b"q")
+        terminal.send(b"\x1bq")
         self.assertEqual(terminal.wait_exit(), 0)
 
     def test_subagent_tab_import_adopts_only_profiles(self):

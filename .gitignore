@@ -1,5 +1,7 @@
 /build/
 /build-sanitize/
+/build-*/
+/dist/
 /output/
 __pycache__/
 *.pyc

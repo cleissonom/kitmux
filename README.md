@@ -5,59 +5,149 @@ A C terminal manager for MCP servers, Agent Skills, and custom subagents across
 clients receive them, and manage availability from an interactive terminal or
 ordinary commands.
 
-**v0.4.0 · C17 · [MIT](LICENSE)**
+**v0.5.0 · C17 · [MIT](LICENSE)**
 
 - Manage MCP servers, complete skill packages, and custom subagent definitions.
 - Organize each resource view into groups, with explicit controls for each coding client.
 - Import existing setup, preview native changes, detect conflicts, and restore.
 - Use a keyboard interface with selectors, colors, filtering, and multiple selection.
+- Read installed skill documents, subagent instructions, and MCP descriptions in the terminal.
 
 [Contributing](CONTRIBUTING.md) · [Security reporting](SECURITY.md) ·
 [Architecture](docs/IMPLEMENTATION.md) · [Third-party notices](THIRD_PARTY.md)
 
-Version 0.4 puts collapsible groups inside MCPs, Skills, and Subagents. A resource
-can belong to several groups while remaining one installed definition. Groups
-are scoped to their resource type, so editing a Skills group cannot change MCPs.
-Native variants retain each client's model, tools, permissions, and other
-settings. See [v0.4 notes](docs/V0.4.md) for migration and compatibility.
+See [v0.5 notes](docs/V0.5.md) for document views and binary distribution, and
+[v0.4 notes](docs/V0.4.md) for scoped groups and legacy catalog migration.
 
-## Build and run
+## Download and install
 
-From a source ZIP, extract the archive and open a terminal in the `kitmux`
-directory. Build on the destination computer so the executable matches its
-architecture and installed libraries.
+Download a prebuilt executable from [Releases](https://github.com/cleissonom/kitmux/releases).
+The release targets macOS 15+ (Apple Silicon and Intel) and Linux with glibc 2.35+
+(ARM64 and x86_64). Linux needs system terminfo data, commonly supplied by
+`ncurses-base` (some terminals also need `ncurses-term`); Git is needed only for
+repository skill downloads. No compiler,
+Python, Node, or Homebrew libraries are required by the release executable.
+Exact platform qualification is recorded in [the implementation notes](docs/IMPLEMENTATION.md).
 
-Requirements: a C17 compiler, Make, pkg-config, json-c, libyaml, ncurses, and
-OpenSSL libcrypto. Git is needed for repository skill downloads. Python 3.11+
-is needed for tests only; the application has no Python or Node runtime.
+This block downloads one pinned release, verifies its SHA256 checksum, and installs
+to `~/.local/bin`. Set `KITMUX_INSTALL_DIR` to use another directory. An existing
+regular executable is saved as `kitmux.previous`; symlink installations are left
+for their original installer to manage.
 
-On macOS, dependencies can be installed with:
-
+<!-- kitmux-install -->
 ```sh
-brew install pkgconf json-c libyaml ncurses openssl
+(
+  set -eu
+  kitmux_version=v0.5.0
+  case "$(uname -s)" in
+    Darwin) kitmux_os=darwin ;;
+    Linux) kitmux_os=linux ;;
+    *) echo "Unsupported operating system" >&2; exit 1 ;;
+  esac
+  case "$(uname -m)" in
+    arm64|aarch64) kitmux_arch=arm64 ;;
+    x86_64|amd64) kitmux_arch=x86_64 ;;
+    *) echo "Unsupported architecture" >&2; exit 1 ;;
+  esac
+  kitmux_name="kitmux-${kitmux_version}-${kitmux_os}-${kitmux_arch}"
+  kitmux_url="https://github.com/cleissonom/kitmux/releases/download/${kitmux_version}"
+  kitmux_tmp=$(mktemp -d)
+  kitmux_new= kitmux_backup=
+  trap 'rm -rf "$kitmux_tmp"; [ -z "$kitmux_new" ] || rm -f "$kitmux_new"; [ -z "$kitmux_backup" ] || rm -f "$kitmux_backup"' EXIT
+  trap 'exit 1' HUP INT TERM
+  curl -fL --proto '=https' --tlsv1.2 "$kitmux_url/$kitmux_name.tar.gz" -o "$kitmux_tmp/$kitmux_name.tar.gz"
+  curl -fL --proto '=https' --tlsv1.2 "$kitmux_url/SHA256SUMS" -o "$kitmux_tmp/SHA256SUMS"
+  awk -v name="$kitmux_name.tar.gz" '$2 == name { print }' "$kitmux_tmp/SHA256SUMS" > "$kitmux_tmp/checksum"
+  [ "$(wc -l < "$kitmux_tmp/checksum")" -eq 1 ] || { echo "Missing or ambiguous checksum" >&2; exit 1; }
+  (cd "$kitmux_tmp"; if command -v sha256sum >/dev/null 2>&1; then sha256sum -c checksum; else shasum -a 256 -c checksum; fi)
+  tar -xzf "$kitmux_tmp/$kitmux_name.tar.gz" -C "$kitmux_tmp"
+  [ "$("$kitmux_tmp/$kitmux_name/kitmux" --version)" = "kitmux ${kitmux_version#v}" ]
+  kitmux_dir=${KITMUX_INSTALL_DIR:-"$HOME/.local/bin"}
+  mkdir -p "$kitmux_dir"
+  [ ! -L "$kitmux_dir/kitmux" ] || { echo "Existing kitmux is a symlink; use its original installer" >&2; exit 1; }
+  [ ! -e "$kitmux_dir/kitmux" ] || [ -f "$kitmux_dir/kitmux" ]
+  if [ -f "$kitmux_dir/kitmux" ]; then
+    [ ! -L "$kitmux_dir/kitmux.previous" ] && { [ ! -e "$kitmux_dir/kitmux.previous" ] || [ -f "$kitmux_dir/kitmux.previous" ]; } || {
+      echo "Backup path must be absent or a regular file" >&2; exit 1;
+    }
+  fi
+  kitmux_new=$(mktemp "$kitmux_dir/.kitmux.XXXXXXXX")
+  install -m 755 "$kitmux_tmp/$kitmux_name/kitmux" "$kitmux_new"
+  if [ -f "$kitmux_dir/kitmux" ]; then
+    kitmux_backup=$(mktemp "$kitmux_dir/.kitmux.XXXXXXXX")
+    cp -p "$kitmux_dir/kitmux" "$kitmux_backup"
+    mv -f "$kitmux_backup" "$kitmux_dir/kitmux.previous"
+    kitmux_backup=
+  fi
+  mv -f "$kitmux_new" "$kitmux_dir/kitmux"
+  kitmux_new=
+  printf 'Installed %s at %s/kitmux\n' "$kitmux_version" "$kitmux_dir"
+)
 ```
 
-On Ubuntu/Debian, the corresponding development packages are `build-essential`,
-`pkg-config`, `libjson-c-dev`, `libyaml-dev`, `libncurses-dev`, and `libssl-dev`.
-This implementation has been exercised on macOS arm64; Linux still needs platform
-qualification.
+Add the install directory to PATH in your shell configuration, then start Kitmux:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+kitmux --version
+kitmux
+```
+
+To upgrade, change `kitmux_version` to a published tag and rerun the block. Downloads
+and verification finish before replacing the executable. Restart coding clients
+after upgrading so managed MCP bridges use the new binary. For binary rollback,
+run `mv "$HOME/.local/bin/kitmux.previous" "$HOME/.local/bin/kitmux"` (adjust the
+directory if overridden). This does not roll back catalog or native configuration;
+use the documented migration backup and `restore` workflow when needed. v0.4 and
+v0.5 use catalog schema 3; versions before v0.4 cannot read that schema.
+
+### Install and import with your local agent
+
+Copy this prompt into your local coding agent:
+
+```text
+Install Kitmux from https://github.com/cleissonom/kitmux/releases and import my
+existing setup. Read the README for the selected stable release. Resolve one
+release tag, select the executable for this machine, verify its SHA256 checksum,
+and install it at ~/.local/bin/kitmux using the documented atomic upgrade and
+backup procedure. Keep an existing newer version; report incompatible platforms
+or symlink installations instead of replacing another installer's files.
+Ensure Kitmux is reachable on PATH and verify its version.
+
+Detect existing user configurations for Codex, Claude Code, and OpenCode, including
+their skill/subagent directories. For the detected clients, run import --preview,
+inspect the result, and apply the import of supported MCPs, skills, and subagents.
+If an older catalog requires migration, use group migrate --preview then --apply.
+Preserve client-specific definitions, credentials, disabled states, unrelated
+settings, and restore records. Retain project/plugin resources in their native
+scope. Do not force conflicts, rewrite the private catalog/journal, or use refresh
+to silently adopt conflicting external edits. Report skipped or conflicting items.
+
+Verify with kitmux --version, status, doctor, and sync --check for each imported
+client. If a check reports pending changes, inspect sync --preview and apply only
+changes consistent with preserving my existing setup. Report imported resource
+counts, unresolved conflicts, and client reload steps. Never print credentials
+or complete native configuration files. Proceed with installation and supported
+imports; ask only if resolving a conflict requires a choice about my setup.
+```
+
+## Build and run from source
+
+Requirements: C17 compiler, Make, pkg-config, json-c, libyaml, ncursesw, and
+OpenSSL libcrypto. Python 3.11+ is needed for tests only. On macOS, install build
+dependencies with `brew install pkgconf json-c libyaml ncurses openssl`. On
+Ubuntu/Debian use `build-essential`, `pkg-config`, `libjson-c-dev`, `libyaml-dev`,
+`libncurses-dev`, and `libssl-dev`.
 
 ```sh
 make
-./build/kitmux
-```
-
-The executable stays under `build/`. Optional installation:
-
-```sh
+./build/kitmux --help
 make install PREFIX="$HOME/.local"
-export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Add that PATH entry to your shell configuration if needed. Examples below that
-use `kitmux` assume it is installed on PATH; otherwise use `./build/kitmux`.
+Without installation, substitute `./build/kitmux` for `kitmux` in the examples.
 
-Run `./build/kitmux --help` for commands. Without a TTY, the application prints
+Run `kitmux --help` for commands. Without a TTY, the application prints
 help instead of waiting for input. `NO_COLOR=1` or `--no-color` disables colors.
 Reload clients after upgrading so new processes use the installed version.
 Older catalogs can be inspected before migration. Preview and apply the group
@@ -82,9 +172,9 @@ commands, environment, or working directory per client; Kitmux keeps those
 execution variants under one catalog ID.
 
 ```sh
-./build/kitmux import --from codex,claude,opencode --preview
-./build/kitmux import --from codex,claude,opencode --apply
-./build/kitmux status
+kitmux import --from codex,claude,opencode --preview
+kitmux import --from codex,claude,opencode --apply
+kitmux status
 ```
 
 To adopt deliberate external edits to already-owned entries, preview and apply
@@ -111,10 +201,10 @@ requires changing that specific native override before retrying sync.
 Create a group and assign it to any subset of the clients:
 
 ```sh
-./build/kitmux mcp group add communication
-./build/kitmux mcp group include communication teams slack
-./build/kitmux mcp group assign communication --agents codex,claude,opencode
-./build/kitmux mcp group enable communication
+kitmux mcp group add communication
+kitmux mcp group include communication teams slack
+kitmux mcp group assign communication --agents codex,claude,opencode
+kitmux mcp group enable communication
 ```
 
 The example assumes those server IDs exist. Imported resources preserve their
@@ -124,8 +214,8 @@ membership control them instead.
 For a new catalog, preview and apply native configuration once:
 
 ```sh
-./build/kitmux sync --preview
-./build/kitmux sync --apply
+kitmux sync --preview
+kitmux sync --apply
 ```
 
 Use `--agent codex`, `--agent claude`, or `--agent opencode` to adopt one client.
@@ -185,9 +275,9 @@ alongside effective availability; it omits MCP options and credentials.
 |---|---|
 | `1`–`5`, Tab | MCPs, Skills, Subagents, Clients, Status |
 | Arrows, `j`/`k` | Move selection |
-| Enter | Expand/collapse a group; show resource details |
+| Enter | Expand/collapse a group; open a resource document |
 | Left/Right | Collapse/expand a group |
-| `v` | Show details for the selected group or resource |
+| `v` | Show group details or open a resource document |
 | Space | Select multiple rows |
 | `/`, Esc | Filter; clear filter or cancel |
 | `n`, `x`, `d` | Add, edit, remove |
@@ -202,6 +292,14 @@ alongside effective availability; it omits MCP options and credentials.
 
 The interface needs at least 74 columns and 20 rows. It handles terminal resize,
 normal exit, and interruption without leaving echo disabled.
+Resource documents support arrows or `j`/`k`, Page Up/Down, Space, Home/End or
+`g`/`G`; Enter, Esc, or `q` returns to the selected row. Headings and fenced code
+receive terminal formatting, while other Markdown remains readable as text.
+Skills show the installed `SKILL.md`, including documents larger than 32 KiB.
+Subagents show shared instructions and labeled effective native variants. MCPs
+show their description, transport, mode, and availability without endpoint
+arguments, environment values, or native authentication fields. Opening details
+does not run servers or change configuration.
 Groups show their matching resources as indented rows; uncategorized resources
 appear under Ungrouped. Search finds resources even inside collapsed groups.
 An item appearing in several groups is one resource: edits apply everywhere,
@@ -279,10 +377,10 @@ definition does not terminate a running subagent or erase its context.
 - `inherit` removes a per-client override. No assignment means off.
 
 ```sh
-./build/kitmux mcp disable teams --agent claude
-./build/kitmux mcp inherit teams --agent claude
-./build/kitmux mcp group disable communication
-./build/kitmux status --json
+kitmux mcp disable teams --agent claude
+kitmux mcp inherit teams --agent claude
+kitmux mcp group disable communication
+kitmux status --json
 ```
 
 Assignment shares definitions. It does not merge accounts, authentication stores,
@@ -294,17 +392,23 @@ agent that also has ordinary filesystem/shell access.
 Register an existing command or an HTTP endpoint:
 
 ```sh
-./build/kitmux mcp add example --command /absolute/path/to/mcp-server -- --stdio
-./build/kitmux mcp add docs --url https://example.test/mcp
-./build/kitmux mcp edit example --cwd /absolute/project/path
-./build/kitmux mcp reconnect example --agent codex
-./build/kitmux mcp status example --agent codex --json
-./build/kitmux mcp remove example
+kitmux mcp add example --command /absolute/path/to/mcp-server -- --stdio
+kitmux mcp add docs --url https://example.test/mcp
+kitmux mcp edit example --cwd /absolute/project/path
+kitmux mcp edit example --description-file ./server-guide.md
+kitmux mcp edit docs --description "Search the team's documentation"
+kitmux mcp reconnect example --agent codex
+kitmux mcp status example --agent codex --json
+kitmux mcp remove example
 ```
 
 Registration does not install the MCP server. Direct mode leaves connection
 ownership with the client; reconnect returns an actionable instruction when
 Kitmux cannot control that client connection. HTTP/OAuth remains direct.
+Use one of `--description TEXT` or `--description-file FILE` with add/edit, including
+native `--from` provisioning. The TUI form offers text, Markdown file, keep/skip,
+and clear choices. Descriptions remain local catalog metadata; imports and refresh
+preserve authored text. Existing entries without documentation show a fallback.
 
 Imported endpoints cannot be changed to a different command/URL under the same
 ID. Add a new ID and review its settings; authentication from the previous
@@ -326,8 +430,8 @@ Only tracked child process groups are stopped. There is no permanent daemon.
 Inspect processes without starting or reconnecting them:
 
 ```sh
-./build/kitmux mcp status example --agent codex
-./build/kitmux status --json
+kitmux mcp status example --agent codex
+kitmux status --json
 ```
 
 Authenticated local queries report each bridge PID, its actual upstream PID,
@@ -368,13 +472,13 @@ actionable error if the platform socket-path limit is exceeded.
 ## Skills
 
 ```sh
-./build/kitmux skill add /absolute/path/to/meeting-notes
-./build/kitmux skill add owner/repository --path skills/meeting-notes --ref COMMIT
-./build/kitmux skill group add communication
-./build/kitmux skill group include communication meeting-notes
-./build/kitmux skill update meeting-notes --preview
-./build/kitmux skill update meeting-notes --apply --ref NEW_COMMIT
-./build/kitmux skill rollback meeting-notes
+kitmux skill add /absolute/path/to/meeting-notes
+kitmux skill add owner/repository --path skills/meeting-notes --ref COMMIT
+kitmux skill group add communication
+kitmux skill group include communication meeting-notes
+kitmux skill update meeting-notes --preview
+kitmux skill update meeting-notes --apply --ref NEW_COMMIT
+kitmux skill rollback meeting-notes
 ```
 
 Complete skill packages are copied into a SHA256-addressed store outside agent
@@ -433,9 +537,9 @@ permissions, and a journal for native updates. Partial multi-client application
 is recoverable; it is not claimed to be one atomic transaction.
 
 ```sh
-./build/kitmux doctor
-./build/kitmux restore --agent claude --preview
-./build/kitmux restore --agent claude --apply
+kitmux doctor
+kitmux restore --agent claude --preview
+kitmux restore --agent claude --apply
 ```
 
 Restore checks for concurrent edits and restores owned entries/projections to
@@ -484,14 +588,14 @@ AddressSanitizer and UndefinedBehaviorSanitizer.
 See [implementation progress](docs/IMPLEMENTATION.md), the original
 [product plan](docs/PLAN.md), the [concept diagram](docs/kitmux-concept.html), and
 [third-party notices](THIRD_PARTY.md).
-The [v0.3 work and verification record](docs/V0.3.md) describes the current release.
+The [v0.5 release notes](docs/V0.5.md) describe the current release.
 
 ## Contributing and license
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, test expectations,
-bug reports, and pull requests. The macOS GitHub Actions workflow runs the normal
-and sanitizer suites; installed-client qualification remains an explicit local
-check.
+bug reports, and pull requests. GitHub Actions runs normal and sanitizer suites
+on the macOS/Linux architecture matrix; installed-client qualification remains
+an explicit local check.
 
 Kitmux is available under the [MIT license](LICENSE). Vendored code retains its
 upstream notices, documented in [THIRD_PARTY.md](THIRD_PARTY.md).

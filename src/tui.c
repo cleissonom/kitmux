@@ -180,10 +180,10 @@ static void handle_key(KmUi *ui, int key) {
     else if (key == KEY_DOWN || key == 'j') { if (ui->tab == UI_STATUS) { if (ui->snapshot_more) ui->snapshot_top++; } else if (ui->row + 1 < ui->count) ui->row++; }
     else if (key == KEY_UP || key == 'k') { if (ui->tab == UI_STATUS) { if (ui->snapshot_top) ui->snapshot_top--; } else if (ui->row > 0) ui->row--; }
     else if (key == '\n' || key == KEY_ENTER) {
-        if (ui_resource_selected(ui)) ui->details = !ui->details;
+        if (ui_resource_selected(ui)) ui_resource_details(ui);
         else if (ui_current_row(ui)) ui_expand(ui, ui_is_collapsed(ui, ui_current_row(ui)));
     } else if (key == KEY_LEFT || key == KEY_RIGHT) ui_expand(ui, key == KEY_RIGHT);
-    else if (key == 'v') ui->details = !ui->details;
+    else if (key == 'v') { if (ui_resource_selected(ui)) ui_resource_details(ui); else ui->details = !ui->details; }
     else if (key == ' ' && ui_current(ui)) {
         char id[80]; ui_mark_key(ui_current_row(ui), id, sizeof(id));
         if (km_get(ui->marks, id)) json_object_object_del(ui->marks, id);

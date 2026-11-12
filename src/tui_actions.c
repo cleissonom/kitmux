@@ -128,26 +128,26 @@ const char *ui_text_lines(const char *text, int row, int rows, int offset) {
     return text;
 }
 
-static bool output_view(KmUi *ui, const char *title, bool applying) {
+static bool review_output(KmUi *ui, const char *title) {
     int offset = 0;
     while (!km_ui_interrupted) {
         if (!ui_modal_ready()) return false;
         dialog_title(title);
         const char *line = ui_text_lines(ui->output, 5, LINES - 9, offset);
-        const char *hint = applying ? "j/k scroll   Enter apply   Esc cancel" : "j/k scroll   Enter or Esc returns";
+        const char *hint = "j/k scroll   Enter apply   Esc cancel";
         mvaddnstr(LINES - 2, 3, ui->truncated ? "Output truncated. Inspect full output with the CLI. Esc returns." : hint, COLS - 6);
         refresh(); int key = getch();
         if (key == 27 || key == 'q') return false;
-        if (key == '\n' || key == KEY_ENTER) { if (!applying) return false; if (!ui->truncated) return true; }
+        if ((key == '\n' || key == KEY_ENTER) && !ui->truncated) return true;
         if (key == KEY_DOWN || key == 'j') { if (*line) offset++; }
         if ((key == KEY_UP || key == 'k') && offset) offset--;
     }
     return false;
 }
 
-bool ui_review(KmUi *ui, const char *title) { return output_view(ui, title, true); }
+bool ui_review(KmUi *ui, const char *title) { return review_output(ui, title); }
 
-void ui_view(KmUi *ui, const char *title) { (void)output_view(ui, title, false); }
+void ui_view(KmUi *ui, const char *title) { ui_document_view(ui, title, ui->output, false); }
 
 static void toggle_items(KmUi *ui, bool removing) {
     if (ui->tab >= UI_CLIENTS || !ui_current(ui)) return;
@@ -220,7 +220,7 @@ void ui_assign(KmUi *ui) {
 static void show_help(KmUi *ui) {
     if (!ui_modal_ready()) return;
     dialog_title("Kitmux keyboard shortcuts");
-    const char *lines[] = {"1-5 / Tab   MCPs, Skills, Subagents, Clients, Status", "j/k / arrows   Move selection or scroll Status", "Enter / Left / Right   Expand groups; Enter shows item details", "Space   Select rows; repeated items are selected once", "e Toggle availability   a Assign clients   v Toggle details", "g New group  n Add item  x Edit/rename  d Remove", "m Group members or item groups   / Search   Esc Clear/cancel", "r Reconnect MCP   s Preview/adopt native configuration", "i Import (Subagents: profiles only)  p Duplicate subagent", "u Preview/apply skill update   b Roll back skill", "f Capture Status observation   c Doctor   q Quit", "", "Group clients show effective availability; [-] means mixed.", "Another group can enable an item. Explicit/global OFF wins.", "Your coding agent may still need a refresh or reload.", "Press any key to return."};
+    const char *lines[] = {"1-5 / Tab   MCPs, Skills, Subagents, Clients, Status", "j/k / arrows   Move selection or scroll Status", "Enter / Left / Right   Expand groups; Enter shows item details", "Space   Select rows; repeated items are selected once", "e Toggle availability   a Assign clients   v Open details", "g New group  n Add item  x Edit/rename  d Remove", "m Group members or item groups   / Search   Esc Clear/cancel", "r Reconnect MCP   s Preview/adopt native configuration", "i Import (Subagents: profiles only)  p Duplicate subagent", "u Preview/apply skill update   b Roll back skill", "f Capture Status observation   c Doctor   q Quit", "", "Group clients show effective availability; [-] means mixed.", "Another group can enable an item. Explicit/global OFF wins.", "Your coding agent may still need a refresh or reload.", "Press any key to return."};
     for (size_t i = 0; i < sizeof(lines) / sizeof(*lines) && (int)i + 5 < LINES - 1; i++) mvaddnstr(5 + (int)i, 3, lines[i], COLS - 6);
     refresh(); while (getch() == ERR && !km_ui_interrupted) {} (void)ui;
 }

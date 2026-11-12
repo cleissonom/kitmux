@@ -139,6 +139,10 @@ static int validate_native_snapshots(Km *km, const char *id, json_object *native
 }
 
 static int validate_mcp(Km *km, const char *id, json_object *server) {
+    json_object *description = NULL;
+    if (json_object_object_get_ex(server, "description", &description) &&
+        (!plain_string(description) || (size_t)json_object_get_string_len(description) > KM_MAX_FILE))
+        return km_error(km, "Invalid MCP description for %s", id);
     const char *mode = km_string(server, "mode");
     if (km_get(server, "mode") && (!plain_string(km_get(server, "mode")) || (strcmp(mode, "direct") && strcmp(mode, "managed"))))
         return km_error(km, "Invalid MCP mode for %s", id);

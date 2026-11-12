@@ -90,16 +90,25 @@ Local qualification on 12 November 2026:
 | macOS arm64: `make -j4 sanitize` | 274 passed; 6 opt-in cases skipped; ASan/UBSan enabled |
 | Ubuntu 22.04 arm64: `make -j4 BUILD=build-linux PYTHON=python3.11 test` | 274 passed; 6 opt-in cases skipped; 280 discovered |
 | Ubuntu 22.04 arm64: `ASAN_OPTIONS=detect_leaks=0 make -j4 BUILD=build-linux-sanitize SANITIZE_BUILD=build-linux-sanitize PYTHON=python3.11 sanitize` | 274 passed; 6 opt-in cases skipped; ASan/UBSan enabled |
+| Ubuntu 22.04 arm64: `sh scripts/check-leaks.sh /work/build-linux-sanitize/kitmux` | 5 representative workflows passed with `detect_leaks=1` |
 | arm64 release builds on macOS and Ubuntu 22.04: `make release VERSION=v0.5.0` | Both versioned archives built; runtime linkage, architecture, and minimum-platform verification passed |
 | Packaged executables: `sh scripts/smoke-release.sh BINARY` | Import, skill hashing, managed MCP reconnect, terminal restoration, xterm/tmux startup passed on both systems |
 | Packaged macOS executable: `KITMUX_BINARY=build-release-darwin-arm64/kitmux PYTHONPATH=tests python3 -m unittest test_install.ReleaseInstallTests.test_documented_install_import_check_and_restore_with_real_binary -v` | Passed using staged downloads and an isolated home |
 
-Linux qualification ran in Ubuntu 22.04 containers under a process reaper. Local
-LeakSanitizer ptrace scans were prohibitively slow in the container, so the local
-Linux sanitizer run disabled leak detection only; hosted CI retains default
-ASan/UBSan settings. An initial deadline-sensitive runtime test exceeded its
-wall-clock assertion while two dependency compilations saturated the host; the
-complete suite passed after those builds finished without relaxing its deadline.
+Linux qualification ran in Ubuntu 22.04 containers under a process reaper. On
+Linux ARM64, LeakSanitizer exit scans added about 1.1 seconds per CLI locally and
+about 3 seconds on the hosted runner. The initial hosted full-suite run reached
+its 30-minute limit and reported failures in shutdown/status timing tests. An
+inactive status snapshot could finish its leak scan after a test's entire polling
+window elapsed. Switching compilers offered only a modest improvement.
+
+ARM64 Linux CI therefore runs the complete suite under ASan/UBSan with
+`ASAN_OPTIONS=detect_leaks=0`, then runs focused non-timed import, skill, subagent,
+metadata, and document workflows with `detect_leaks=1`. All original timing
+assertions remain in the full ordinary and ASan/UBSan suites. The three affected
+runtime cases passed unchanged under that profile. Linux x86_64 retains leak
+detection across the complete sanitizer suite. Full-suite ARM64 leak coverage is
+a remaining toolchain limitation, not a claim made by this release.
 
 The Linux archive passed smoke tests in a fresh Ubuntu 22.04/glibc 2.35 runtime
 containing terminal data and Python fixtures but no development libraries. On

@@ -22,6 +22,11 @@ homes and synthetic providers. See [native qualification](docs/NATIVE_CLIENT_QUA
 GitHub Actions runs the ordinary and sanitizer suites on macOS 15 (arm64 and
 x86_64) and Ubuntu 22.04 (arm64 and x86_64). Exact qualification evidence and
 remaining limitations are recorded in [the implementation notes](docs/IMPLEMENTATION.md).
+On Linux ARM64, use `ASAN_OPTIONS=detect_leaks=0 make sanitize` for the full
+ASan/UBSan suite, then `sh scripts/check-leaks.sh build-sanitize/kitmux` for
+the separate leak checks on non-timed workflows.
+This avoids exit-time leak scans consuming the runtime tests' polling budgets.
+Linux x86_64 retains default leak detection throughout the full suite.
 
 ## Release builds
 

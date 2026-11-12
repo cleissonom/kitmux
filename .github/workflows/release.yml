@@ -58,7 +58,12 @@ jobs:
       - name: Test
         run: make -j2 test
       - name: Address and undefined behavior sanitizers
+        env:
+          ASAN_OPTIONS: ${{ runner.os == 'Linux' && runner.arch == 'ARM64' && 'detect_leaks=0' || '' }}
         run: make -j2 sanitize
+      - name: ARM64 Linux leak checks
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: sh scripts/check-leaks.sh "$PWD/build-sanitize/kitmux"
       - name: Build standalone release
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}

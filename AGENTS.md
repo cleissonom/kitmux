@@ -19,6 +19,10 @@ prefixes; never install their bundled libraries globally. Keep native tests
 opt-in, and check packaged binaries without development libraries before release.
 The README's marked installation block is exercised directly by subprocess tests;
 keep its staged download/checksum/install behavior safe on both supported systems.
+On Linux ARM64, run the full sanitizer suite with `ASAN_OPTIONS=detect_leaks=0`,
+then `sh scripts/check-leaks.sh build-sanitize/kitmux`. Leak scans at process exit
+otherwise consume the timing tests' budgets; keep all timing assertions intact.
+Linux x86_64 retains leak detection throughout the complete sanitizer suite.
 
 `make test-native` opts into installed-client qualification. Keep its client homes,
 authentication, provider responses, and MCPs isolated; use synthetic loopback

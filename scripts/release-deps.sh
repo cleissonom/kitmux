@@ -60,7 +60,7 @@ build_crypto() {
 }
 
 build_curses() {
-    fetch ncurses-6.6 https://invisible-island.net/archives/ncurses/ncurses-6.6.tar.gz \
+    fetch ncurses-6.6 https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz \
         355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11
     (cd "$work/sources/ncurses-6.6"
         ./configure --prefix="$prefix" --with-normal --without-shared --without-debug \

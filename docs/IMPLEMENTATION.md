@@ -133,6 +133,10 @@ executables, combines four archives with `SHA256SUMS`, and publishes only when
 every required job passes. Hosted results are available in the repository's
 [Actions history](https://github.com/cleissonom/kitmux/actions).
 
+The first hosted Linux release build received HTTP 403 from the original ncurses
+archive host. Release downloads now use the official GNU mirror; its archive was
+verified against the same pinned SHA256 before changing the URL.
+
 ## V0.4 verification baseline
 
 Release verification on macOS arm64, 11 November 2026:

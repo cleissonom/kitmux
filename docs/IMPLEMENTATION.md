@@ -135,12 +135,31 @@ Tests use temporary homes and do not mutate live client settings or install host
 dependencies. Release/linkage tests reject missing notices, mismatched versions,
 wrong architectures, newer platform requirements, and non-system dynamic libraries.
 
-The table records local execution. The [CI workflow](../.github/workflows/ci.yml)
-qualifies ordinary and sanitizer tests on all four native targets. The
-[release workflow](../.github/workflows/release.yml) additionally verifies packaged
-executables, combines four archives with `SHA256SUMS`, and publishes only when
-every required job passes. Hosted results are available in the repository's
-[Actions history](https://github.com/cleissonom/kitmux/actions).
+Hosted qualification on 12 November 2026 at revision `36098f7`:
+
+| Native target | Ordinary tests | ASan/UBSan |
+|---|---|---|
+| macOS 15 arm64 | Passed | Passed |
+| macOS 15 x86_64 | Passed | Passed |
+| Ubuntu 22.04 arm64 | Passed | Passed; separate leak checks passed |
+| Ubuntu 22.04 x86_64 | Passed | Passed, including full-suite leak detection |
+
+Each full suite discovered 280 cases: 274 passed and 6 opt-in native cases were
+skipped. The [four-target CI run](https://github.com/cleissonom/kitmux/actions/runs/43237072560)
+completed successfully. The ARM64 Linux sanitizer profile and native-client
+qualification limits above apply to these results.
+
+The [release workflow](../.github/workflows/release.yml) additionally verifies
+packaged executables, combines four archives with `SHA256SUMS`, and publishes
+only when every required job passes.
+
+All four native build jobs in the
+[manual release qualification](https://github.com/cleissonom/kitmux/actions/runs/43237129299)
+also passed ordinary/sanitizer suites, standalone archive validation, and packaged
+runtime smoke tests. Both macOS architectures passed the complete smoke harness
+with Homebrew reads denied. Both Linux architectures passed it in Ubuntu 22.04
+without development libraries, including managed MCP lifecycle, installed skill
+hashing, fixture imports, and terminal startup/restoration.
 
 The first hosted Linux release build received HTTP 403 from the original ncurses
 archive host. Release downloads now use the official GNU mirror; its archive was
